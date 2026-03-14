@@ -29,13 +29,17 @@ const OFFLINE_PACKS   = `neernet-offline-packs-v1`;     // written by download c
 
 const ALL_CACHES = [SHELL_CACHE, TILE_CACHE, STYLE_CACHE, OFFLINE_PACKS];
 
+// Derive base URL from the SW's own location so paths work under any sub-path
+// (e.g. /FloodGraph/ on GitHub Pages as well as / in local dev).
+const BASE = new URL('./', self.location.href).href;  // e.g. 'https://host/FloodGraph/'
+
 // ─── App shell assets (pre-cached at install) ─────────────────────────────────
 
 const SHELL_ASSETS = [
-  '/',
-  '/index.html',
-  '/offline-packs.json',
-  '/manifest.json',
+  BASE,
+  `${BASE}index.html`,
+  `${BASE}offline-packs.json`,
+  `${BASE}manifest.json`,
 ];
 
 // ─── URL matchers ─────────────────────────────────────────────────────────────
@@ -271,14 +275,15 @@ async function staleWhileRevalidate(request, cacheName) {
  * Falls back to network only if the shell has not been cached yet.
  */
 async function serveShell() {
-  const cache  = await caches.open(SHELL_CACHE);
-  const cached = await cache.match('/index.html');
+  const indexUrl = `${BASE}index.html`;
+  const cache    = await caches.open(SHELL_CACHE);
+  const cached   = await cache.match(indexUrl);
   if (cached) return cached;
 
   // Shell not cached yet (first visit before install completes) — try network
   try {
-    const response = await fetch('/index.html');
-    if (response.ok) await cache.put('/index.html', response.clone());
+    const response = await fetch(indexUrl);
+    if (response.ok) await cache.put(indexUrl, response.clone());
     return response;
   } catch {
     return new Response('Offline', { status: 503 });

@@ -2,20 +2,21 @@
   "name": "NeerNet – FloodGraph",
   "short_name": "NeerNet",
   "description": "Offline-capable disaster connectivity simulator powered by MapLibre, PMTiles, and Pyodide.",
-  "start_url": "/",
+  "start_url": "/FloodGraph/",
+  "scope": "/FloodGraph/",
   "display": "standalone",
-  "background_color": "#111827",
-  "theme_color": "#1a2744",
+  "background_color": "#0d1117",
+  "theme_color": "#0d1117",
   "orientation": "any",
   "icons": [
     {
-      "src": "/icon-192.png",
+      "src": "/FloodGraph/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/icon-512.png",
+      "src": "/FloodGraph/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
