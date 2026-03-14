@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+  base: '/FloodGraph/',
   // Required for Pyodide SharedArrayBuffer support in dev
   server: {
     port: 5173,

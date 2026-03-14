@@ -1,0 +1,62 @@
+# Deploy NeerNet / FloodGraph to GitHub Pages
+#
+# Prerequisites (one-time, in GitHub repo settings):
+#   Settings → Pages → Source → "GitHub Actions"
+#
+# Note: GitHub Pages does not serve Cross-Origin-Opener-Policy /
+# Cross-Origin-Embedder-Policy headers, which Pyodide needs for
+# SharedArrayBuffer.  If Pyodide fails to load on the live site,
+# add coi-serviceworker to public/ and register it in index.html.
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+
+# Required by actions/deploy-pages
+permissions:
+  contents: read
+  pages:    write
+  id-token: write
+
+# Only one deployment at a time; cancel any in-progress run on new push
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
