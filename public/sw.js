@@ -21,7 +21,7 @@
 
 // ─── Cache names ──────────────────────────────────────────────────────────────
 
-const CACHE_VERSION   = 'v1';
+const CACHE_VERSION   = 'v2';
 const SHELL_CACHE     = `neernet-shell-${CACHE_VERSION}`;
 const TILE_CACHE      = `neernet-tiles-${CACHE_VERSION}`;
 const STYLE_CACHE     = `neernet-styles-${CACHE_VERSION}`;
@@ -271,21 +271,21 @@ async function staleWhileRevalidate(request, cacheName) {
 }
 
 /**
- * Always serve cached /index.html for navigation requests (SPA shell pattern).
- * Falls back to network only if the shell has not been cached yet.
+ * Network-first for /index.html navigation requests (SPA shell pattern).
+ * Always try the network first so new deployments are picked up immediately.
+ * Falls back to cached shell only when offline.
  */
 async function serveShell() {
   const indexUrl = `${BASE}index.html`;
   const cache    = await caches.open(SHELL_CACHE);
-  const cached   = await cache.match(indexUrl);
-  if (cached) return cached;
 
-  // Shell not cached yet (first visit before install completes) — try network
   try {
     const response = await fetch(indexUrl);
     if (response.ok) await cache.put(indexUrl, response.clone());
     return response;
   } catch {
-    return new Response('Offline', { status: 503 });
+    // Offline — serve cached shell
+    const cached = await cache.match(indexUrl);
+    return cached ?? new Response('Offline', { status: 503 });
   }
 }
