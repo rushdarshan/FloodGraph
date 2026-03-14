@@ -8,7 +8,7 @@
  *
  * 2) Runtime caching (fetch)
  *    a) Cache-first for anything in STATIC_CACHE or TILE_CACHE.
- *    b) Network-first for navigation / API calls.
+ *    b) Cache-first shell (/index.html) for all navigation requests (SPA).
  *    c) PMTiles range requests stored keyed by URL + range fragment.
  *    d) Style / sprite / glyph fetches cached transparently.
  *
@@ -148,7 +148,7 @@ self.addEventListener('fetch', (event) => {
   // ── App shell (navigation) ────────────────────────────────────────────────
 
   if (isNavigationRequest(request)) {
-    event.respondWith(networkFirstThenShell(request));
+    event.respondWith(serveShell());
     return;
   }
 
@@ -267,19 +267,20 @@ async function staleWhileRevalidate(request, cacheName) {
 }
 
 /**
- * Network-first for navigation; fall back to cached /index.html.
+ * Always serve cached /index.html for navigation requests (SPA shell pattern).
+ * Falls back to network only if the shell has not been cached yet.
  */
-async function networkFirstThenShell(request) {
+async function serveShell() {
+  const cache  = await caches.open(SHELL_CACHE);
+  const cached = await cache.match('/index.html');
+  if (cached) return cached;
+
+  // Shell not cached yet (first visit before install completes) — try network
   try {
-    const response = await fetch(request);
-    if (response.ok) {
-      const cache = await caches.open(SHELL_CACHE);
-      await cache.put(request, response.clone());
-    }
+    const response = await fetch('/index.html');
+    if (response.ok) await cache.put('/index.html', response.clone());
     return response;
   } catch {
-    const cache    = await caches.open(SHELL_CACHE);
-    const fallback = await cache.match('/index.html');
-    return fallback ?? new Response('Offline', { status: 503 });
+    return new Response('Offline', { status: 503 });
   }
 }

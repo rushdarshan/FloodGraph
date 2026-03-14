@@ -20,7 +20,7 @@ import { fetchKeralaWaterways, buildProximityEdges, colorComponentsGeoJSON } fro
 async function registerServiceWorker(): Promise<void> {
   if (!('serviceWorker' in navigator)) return;
   try {
-    const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+    const reg = await navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`, { scope: import.meta.env.BASE_URL });
     console.log('[SW] registered, scope:', reg.scope);
   } catch (err) {
     console.warn('[SW] registration failed:', err);
@@ -66,7 +66,7 @@ interface PackIndex {
 const PACK_CACHE_NAME = 'neernet-offline-packs-v1';
 
 async function fetchPackIndex(): Promise<PackIndex> {
-  const resp = await fetch('/offline-packs.json');
+  const resp = await fetch(`${import.meta.env.BASE_URL}offline-packs.json`);
   if (!resp.ok) throw new Error(`Failed to fetch pack index: ${resp.status}`);
   return resp.json() as Promise<PackIndex>;
 }

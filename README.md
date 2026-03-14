@@ -322,3 +322,13 @@ in `index.html`.
 - [ ] Export flooded-area GeoJSON / CSV
 - [ ] Multi-region pack management (delete, update)
 - [ ] Offline Pyodide (bundle wheel files in the pack)
+
+---
+
+## Acknowledgements
+
+Built with assistance from [Claude](https://claude.ai) (Anthropic) for code generation and architecture guidance. All code has been reviewed and understood by the author.
+
+Data: © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors, via Overpass API.
+Tiles: [OpenFreeMap](https://openfreemap.org) (no API key required).
+Python runtime: [Pyodide](https://pyodide.org) / [NetworkX](https://networkx.org).
