@@ -1,0 +1,20 @@
+{
+  "name": "floodgraph",
+  "version": "0.1.0",
+  "description": "NeerNet – Serverless Geospatial Disaster Simulator (offline PWA)",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview --port 4173"
+  },
+  "dependencies": {
+    "maplibre-gl": "^4.7.1",
+    "pmtiles": "^3.2.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0"
+  }
+}

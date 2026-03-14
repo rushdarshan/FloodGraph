@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#1a2744" />
+  <meta name="description" content="NeerNet – Serverless offline disaster connectivity simulator" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" href="/icon-192.png" type="image/png" />
+
+  <!-- MapLibre GL CSS -->
+  <link
+    href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"
+    rel="stylesheet"
+    crossorigin="anonymous"
+  />
+
+  <title>NeerNet – FloodGraph</title>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg-dark:    #111827;
+      --bg-panel:   #1f2937;
+      --bg-card:    #374151;
+      --accent:     #3b82f6;
+      --accent-h:   #2563eb;
+      --success:    #10b981;
+      --warning:    #f59e0b;
+      --danger:     #ef4444;
+      --text:       #f9fafb;
+      --text-muted: #9ca3af;
+      --border:     #374151;
+      --sidebar-w:  320px;
+    }
+
+    html, body { height: 100%; overflow: hidden; font-family: system-ui, sans-serif; background: var(--bg-dark); color: var(--text); }
+
+    /* ── Layout ─────────────────────────────────────────────── */
+    #app { display: flex; height: 100%; }
+    #map  { flex: 1; position: relative; }
+
+    /* ── Sidebar ─────────────────────────────────────────────── */
+    #sidebar {
+      width: var(--sidebar-w);
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-panel);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      z-index: 10;
+    }
+
+    .sidebar-header {
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-dark);
+    }
+    .sidebar-header h1 { font-size: 1.25rem; font-weight: 700; color: var(--accent); letter-spacing: .04em; }
+    .sidebar-header p  { font-size: .75rem; color: var(--text-muted); margin-top: 2px; }
+
+    .sidebar-section { padding: 12px 16px; border-bottom: 1px solid var(--border); }
+    .sidebar-section h2 { font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; color: var(--text-muted); margin-bottom: 8px; }
+
+    /* Status bar */
+    #status-bar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 16px;
+      font-size: .75rem; color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-dark);
+    }
+    #status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); flex-shrink: 0; }
+    #status-dot.offline { background: var(--danger); }
+    #status-dot.loading { background: var(--warning); animation: pulse 1s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    /* ── Buttons ────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      padding: 8px 14px; border-radius: 6px; border: none;
+      cursor: pointer; font-size: .8rem; font-weight: 600; transition: background .15s, opacity .15s;
+    }
+    .btn-primary  { background: var(--accent);  color: #fff; }
+    .btn-primary:hover  { background: var(--accent-h); }
+    .btn-outline  { background: transparent; border: 1px solid var(--border); color: var(--text); }
+    .btn-outline:hover  { background: var(--bg-card); }
+    .btn-danger   { background: var(--danger); color: #fff; }
+    .btn-success  { background: var(--success); color: #fff; }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+    .btn-block    { width: 100%; }
+
+    /* ── AOI section ───────────────────────────────────────── */
+    #aoi-controls { display: flex; flex-direction: column; gap: 8px; }
+    #aoi-info { font-size: .75rem; color: var(--text-muted); min-height: 18px; }
+
+    /* ── Offline packs ─────────────────────────────────────── */
+    #packs-list { display: flex; flex-direction: column; gap: 8px; }
+
+    .pack-card {
+      background: var(--bg-card);
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .pack-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
+    .pack-name  { font-size: .85rem; font-weight: 600; }
+    .pack-size  { font-size: .7rem;  color: var(--text-muted); }
+    .pack-desc  { font-size: .72rem; color: var(--text-muted); margin-bottom: 10px; }
+
+    .pack-progress { height: 4px; background: var(--bg-dark); border-radius: 2px; overflow: hidden; margin-bottom: 8px; display: none; }
+    .pack-progress-bar { height: 100%; background: var(--accent); width: 0%; transition: width .3s; border-radius: 2px; }
+
+    .pack-status { font-size: .7rem; color: var(--text-muted); margin-bottom: 6px; min-height: 16px; }
+    .pack-status.ok     { color: var(--success); }
+    .pack-status.err    { color: var(--danger); }
+
+    /* ── Compute section ───────────────────────────────────── */
+    #compute-controls { display: flex; flex-direction: column; gap: 8px; }
+    #compute-status { font-size: .75rem; color: var(--text-muted); min-height: 18px; white-space: pre-wrap; }
+    #compute-results {
+      background: var(--bg-dark); border-radius: 6px; padding: 10px;
+      font-size: .72rem; font-family: monospace; color: var(--text-muted);
+      max-height: 160px; overflow-y: auto; white-space: pre-wrap; display: none;
+    }
+
+    /* ── Map overlays ──────────────────────────────────────── */
+    #map-instructions {
+      position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,.7);  backdrop-filter: blur(4px);
+      color: #fff; padding: 6px 14px; border-radius: 20px; font-size: .78rem;
+      pointer-events: none; z-index: 5; display: none;
+    }
+
+    /* Loader overlay */
+    #map-loader {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(17,24,39,.8); z-index: 100;
+      flex-direction: column; gap: 12px;
+    }
+    #map-loader .spinner {
+      width: 36px; height: 36px; border: 3px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #map-loader p { color: var(--text-muted); font-size: .8rem; }
+
+    /* ── Responsive: collapse sidebar on small screens ─────── */
+    @media (max-width: 640px) {
+      #sidebar { width: 280px; position: absolute; top: 0; left: 0; bottom: 0; transform: translateX(-100%); transition: transform .25s; }
+      #sidebar.open { transform: none; box-shadow: 4px 0 20px rgba(0,0,0,.5); }
+      #menu-toggle { display: flex !important; }
+    }
+
+    #menu-toggle {
+      display: none;
+      position: absolute; top: 10px; left: 10px; z-index: 20;
+      background: var(--bg-panel); border: 1px solid var(--border);
+      color: var(--text); border-radius: 6px; padding: 8px; cursor: pointer;
+    }
+  </style>
+  <script type="module" crossorigin src="/assets/index-B5LNlrsG.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/maplibre-BD93s8Mz.js">
+  <link rel="modulepreload" crossorigin href="/assets/pmtiles-DUBo49rm.js">
+</head>
+<body>
+  <div id="app">
+
+    <!-- ── Sidebar ──────────────────────────────────────────── -->
+    <aside id="sidebar">
+
+      <div class="sidebar-header">
+        <h1>🌊 NeerNet</h1>
+        <p>FloodGraph · Offline Disaster Simulator</p>
+      </div>
+
+      <!-- Online / offline status -->
+      <div id="status-bar">
+        <div id="status-dot"></div>
+        <span id="status-text">Checking connection…</span>
+      </div>
+
+      <!-- AOI selection -->
+      <div class="sidebar-section">
+        <h2>Area of Interest (AOI)</h2>
+        <div id="aoi-controls">
+          <button id="btn-draw-aoi" class="btn btn-outline btn-block">✏️ Draw AOI Polygon</button>
+          <button id="btn-clear-aoi" class="btn btn-outline btn-block" disabled>🗑 Clear AOI</button>
+          <p id="aoi-info">Click the map to add polygon vertices. Double-click to close.</p>
+        </div>
+      </div>
+
+      <!-- Kerala Waterways -->
+      <div class="sidebar-section">
+        <h2>Kerala Waterways</h2>
+        <div id="waterways-controls">
+          <button id="btn-fetch-waterways" class="btn btn-primary btn-block">
+            🗺 Fetch Kerala Waterways
+          </button>
+          <div id="waterways-spinner" style="display:none;margin-top:8px;align-items:center;gap:6px;">
+            <div style="width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0"></div>
+            <span style="font-size:.75rem;color:var(--text-muted)">Fetching…</span>
+          </div>
+          <p id="waterways-status" style="font-size:.75rem;color:var(--text-muted);margin-top:6px">
+            Fetches live OSM data · builds proximity graph · runs connectivity.
+          </p>
+          <div id="waterways-results" style="display:none;margin-top:6px">
+            <p id="waterways-count" style="font-size:.75rem;color:var(--success);font-weight:600"></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Python compute -->
+      <div class="sidebar-section">
+        <h2>Graph Compute (Pyodide)</h2>
+        <div id="compute-controls">
+          <button id="btn-run-connectivity" class="btn btn-primary btn-block" disabled>
+            ⚙️ Run Connectivity
+          </button>
+          <button id="btn-run-flood" class="btn btn-primary btn-block" disabled>
+            🌊 Run Flood BFS
+          </button>
+          <p id="compute-status">AOI required. Pyodide loads on first run.</p>
+          <pre id="compute-results"></pre>
+        </div>
+      </div>
+
+      <!-- Offline packs -->
+      <div class="sidebar-section">
+        <h2>Offline Packs</h2>
+        <div id="packs-list">
+          <p style="font-size:.75rem;color:var(--text-muted)">Loading pack index…</p>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div style="margin-top:auto; padding:12px 16px; font-size:.7rem; color:var(--text-muted)">
+        <div>© 2026 Darshan K. · MIT License</div>
+        <div style="margin-top:4px">FloodGraph v0.1.0</div>
+      </div>
+
+    </aside>
+
+    <!-- ── Map container ────────────────────────────────────── -->
+    <div id="map">
+      <!-- Mobile sidebar toggle -->
+      <button id="menu-toggle" aria-label="Toggle sidebar">☰</button>
+
+      <!-- Map instruction tooltip -->
+      <div id="map-instructions">Click to add vertex · Double-click to finish</div>
+
+      <!-- Initial loader -->
+      <div id="map-loader">
+        <div class="spinner"></div>
+        <p id="map-loader-text">Loading map…</p>
+      </div>
+    </div>
+
+  </div>
+
+</body>
+</html>
