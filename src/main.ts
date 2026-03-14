@@ -220,7 +220,15 @@ function initComputeSection(map: MLMap, aoi: AoiDraw): void {
   const btnConn   = document.getElementById('btn-run-connectivity') as HTMLButtonElement;
   const btnFlood  = document.getElementById('btn-run-flood')        as HTMLButtonElement;
   const statusEl  = document.getElementById('compute-status')!;
-  const resultsEl = document.getElementById('compute-results') as HTMLPreElement;
+  const resultsEl = document.getElementById('compute-results') as HTMLDivElement;
+
+  // Helper to render JSON in a collapsible details block
+  const showResult = (label: string, data: unknown) => {
+    const json = JSON.stringify(data, null, 2)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    resultsEl.innerHTML = `<details><summary>${label}</summary><pre>${json}</pre></details>`;
+    resultsEl.style.display = 'block';
+  };
 
   const worker = getPyWorker();
 
@@ -241,7 +249,7 @@ function initComputeSection(map: MLMap, aoi: AoiDraw): void {
     if (!has) {
       statusEl.textContent     = 'Draw an AOI polygon to enable compute.';
       resultsEl.style.display  = 'none';
-      resultsEl.textContent    = '';
+      resultsEl.innerHTML      = '';
       clearOverlayLayers(map);
     } else {
       statusEl.textContent = 'AOI ready. Click a compute button.';
@@ -269,8 +277,7 @@ function initComputeSection(map: MLMap, aoi: AoiDraw): void {
       setConnectivityLayer(map, positions, result.components);
 
       statusEl.textContent = `✓ Done – ${result.num_components} component(s)`;
-      resultsEl.textContent = JSON.stringify(result, null, 2);
-      resultsEl.style.display = 'block';
+      showResult(`Connectivity – ${result.num_components} component(s)`, result);
     } catch (err) {
       statusEl.textContent = `⚠ ${err instanceof Error ? err.message : err}`;
     } finally {
@@ -304,8 +311,7 @@ function initComputeSection(map: MLMap, aoi: AoiDraw): void {
       setFloodNodesLayer(map, floodCoords);
 
       statusEl.textContent = `✓ ${result.flooded_nodes.length} nodes flooded in ${result.steps_taken} step(s)`;
-      resultsEl.textContent = JSON.stringify(result, null, 2);
-      resultsEl.style.display = 'block';
+      showResult(`Flood BFS – ${result.flooded_nodes.length} nodes flooded`, result);
     } catch (err) {
       statusEl.textContent = `⚠ ${err instanceof Error ? err.message : err}`;
     } finally {
@@ -366,20 +372,32 @@ function initMobileToggle(): void {
 // ─── Waterways section ────────────────────────────────────────────────────────
 
 function initWaterwaysSection(map: MLMap): void {
-  const btn       = document.getElementById('btn-fetch-waterways') as HTMLButtonElement;
-  const statusEl  = document.getElementById('waterways-status')!;
-  const spinner   = document.getElementById('waterways-spinner')!;
-  const resultsEl = document.getElementById('waterways-results')!;
-  const countEl   = document.getElementById('waterways-count')!;
+  const btn         = document.getElementById('btn-fetch-waterways') as HTMLButtonElement;
+  const statusEl    = document.getElementById('waterways-status')!;
+  const spinner     = document.getElementById('waterways-spinner')!;
+  const spinnerText = document.getElementById('waterways-spinner-text')!;
+  const resultsEl   = document.getElementById('waterways-results')!;
+  const countEl     = document.getElementById('waterways-count')!;
 
   const worker = getPyWorker();
 
   btn.addEventListener('click', async () => {
-    btn.disabled          = true;
-    spinner.style.display = 'flex';
+    btn.disabled            = true;
+    spinner.style.display   = 'flex';
     resultsEl.style.display = 'none';
 
-    const setStatus = (msg: string) => { statusEl.textContent = msg; };
+    // Issue #2: update both status paragraph and spinner label together
+    const setStatus = (msg: string) => {
+      statusEl.textContent    = msg;
+      spinnerText.textContent = msg;
+    };
+
+    // Issue #6: forward Pyodide loading messages into waterways status
+    const pyStatus = ({ status, message }: { status: string; message: string }) => {
+      if (status === 'loading') setStatus(`⏳ ${message}`);
+      else if (status === 'ready') setStatus('Python runtime ready – running connectivity…');
+    };
+    worker.onStatus(pyStatus);
 
     try {
       // 1. Fetch from Overpass
@@ -420,6 +438,7 @@ function initWaterwaysSection(map: MLMap): void {
     } catch (err) {
       setStatus(`⚠ ${err instanceof Error ? err.message : String(err)}`);
     } finally {
+      worker.offStatus(pyStatus);
       btn.disabled          = false;
       spinner.style.display = 'none';
     }

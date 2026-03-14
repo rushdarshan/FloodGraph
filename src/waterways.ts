@@ -74,12 +74,26 @@ export async function fetchKeralaWaterways(
 ): Promise<WaterwayData> {
   onStatus('Querying Overpass API…');
 
-  const body = new URLSearchParams({ data: OVERPASS_QUERY });
-  const resp  = await fetch(OVERPASS_URL, {
-    method:  'POST',
-    body,
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-  });
+  const controller = new AbortController();
+  const timeoutId  = setTimeout(() => controller.abort(), 30_000);
+
+  let resp: Response;
+  try {
+    const body = new URLSearchParams({ data: OVERPASS_QUERY });
+    resp = await fetch(OVERPASS_URL, {
+      method:  'POST',
+      body,
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      signal:  controller.signal,
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error('Overpass API timeout. Check internet connection or try again in 60 seconds.');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!resp.ok) {
     throw new Error(`Overpass API returned HTTP ${resp.status}: ${await resp.text().catch(() => '')}`);

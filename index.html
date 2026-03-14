@@ -118,10 +118,18 @@
     /* ── Compute section ───────────────────────────────────── */
     #compute-controls { display: flex; flex-direction: column; gap: 8px; }
     #compute-status { font-size: .75rem; color: var(--text-muted); min-height: 18px; white-space: pre-wrap; }
-    #compute-results {
-      background: var(--bg-dark); border-radius: 6px; padding: 10px;
+    #compute-results { display: none; margin-top: 4px; }
+    #compute-results details {
+      background: var(--bg-dark); border-radius: 6px;
       font-size: .72rem; font-family: monospace; color: var(--text-muted);
-      max-height: 160px; overflow-y: auto; white-space: pre-wrap; display: none;
+    }
+    #compute-results details summary {
+      padding: 7px 10px; cursor: pointer; user-select: none;
+      font-size: .72rem; color: var(--text-muted);
+    }
+    #compute-results details[open] summary { border-bottom: 1px solid var(--border); }
+    #compute-results details pre {
+      padding: 10px; max-height: 150px; overflow-y: auto; white-space: pre-wrap;
     }
 
     /* ── Map overlays ──────────────────────────────────────── */
@@ -198,7 +206,7 @@
           </button>
           <div id="waterways-spinner" style="display:none;margin-top:8px;align-items:center;gap:6px;">
             <div style="width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0"></div>
-            <span style="font-size:.75rem;color:var(--text-muted)">Fetching…</span>
+            <span id="waterways-spinner-text" style="font-size:.75rem;color:var(--text-muted)">Fetching waterways…</span>
           </div>
           <p id="waterways-status" style="font-size:.75rem;color:var(--text-muted);margin-top:6px">
             Fetches live OSM data · builds proximity graph · runs connectivity.
@@ -220,7 +228,7 @@
             🌊 Run Flood BFS
           </button>
           <p id="compute-status">AOI required. Pyodide loads on first run.</p>
-          <pre id="compute-results"></pre>
+          <div id="compute-results"></div>
         </div>
       </div>
 
