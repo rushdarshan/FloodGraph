@@ -17,13 +17,8 @@
 
 // ─── Type imports ─────────────────────────────────────────────────────────────
 
-interface PyProxy {
-  destroy(): void;
-}
-
 interface PyodideInterface {
   runPythonAsync(code: string, options?: { globals?: unknown }): Promise<unknown>;
-  toPy(obj: unknown): PyProxy;
   loadPackage(names: string | string[]): Promise<void>;
   globals: {
     get(key: string): unknown;
@@ -59,14 +54,13 @@ async function initPyodide(): Promise<void> {
 
   pyodide = await pyodideModule.loadPyodide({ indexURL: PYODIDE_CDN });
 
-  postStatus('Installing numpy + networkx…', 'loading');
-  await pyodide.loadPackage(['numpy', 'networkx']);
+  postStatus('Installing networkx…', 'loading');
+  await pyodide.loadPackage(['networkx']);
 
   // Pre-import modules for speed on first call
   await pyodide.runPythonAsync(`
 import networkx as nx
-import numpy as np
-print("NeerNet Pyodide ready: networkx", nx.__version__, "numpy", np.__version__)
+print("NeerNet Pyodide ready: networkx", nx.__version__)
   `);
 
   postStatus('Pyodide ready', 'ready');
@@ -89,15 +83,14 @@ interface ConnectivityResult {
 async function runConnectivity(payload: unknown): Promise<ConnectivityResult> {
   const { edges } = payload as { edges: ConnectivityEdge[] };
 
-  const edgesPy = pyodide!.toPy(edges);
-  pyodide!.globals.set('edges_raw', edgesPy);
-  edgesPy.destroy();
+  pyodide!.globals.set('edges_json', JSON.stringify(edges));
 
   const result = await pyodide!.runPythonAsync(`
 import json, networkx as nx
+
+edges_list = json.loads(edges_json)
 G = nx.Graph()
-for e in edges_raw:
-    G.add_edge(e['source'], e['target'])
+G.add_edges_from((e['source'], e['target']) for e in edges_list)
 
 comps = list(nx.connected_components(G))
 comps_sorted = sorted(comps, key=len, reverse=True)
@@ -107,7 +100,7 @@ _result = json.dumps({
     "component_sizes": [len(c) for c in comps_sorted],
     "components": [list(c) for c in comps_sorted]
 })
-del edges_raw
+del edges_json
 _result
   `);
 
@@ -131,19 +124,17 @@ async function runToyFlood(payload: unknown): Promise<FloodResult> {
 
   const stepsVal = Number.isFinite(steps) ? Math.max(1, Math.min(steps, 50)) : 5;
 
-  const edgesPy = pyodide!.toPy(edges);
-  const srcsPy  = pyodide!.toPy(source_nodes);
-  pyodide!.globals.set('edges_raw',    edgesPy);
-  pyodide!.globals.set('source_nodes', srcsPy);
-  edgesPy.destroy();
-  srcsPy.destroy();
+  pyodide!.globals.set('edges_json',    JSON.stringify(edges));
+  pyodide!.globals.set('sources_json',  JSON.stringify(source_nodes));
 
   const result = await pyodide!.runPythonAsync(`
 import json, networkx as nx
 
+edges_list = json.loads(edges_json)
 G = nx.Graph()
-for e in edges_raw:
-    G.add_edge(e['source'], e['target'])
+G.add_edges_from((e['source'], e['target']) for e in edges_list)
+
+source_nodes = json.loads(sources_json)
 
 # BFS flood propagation
 flooded    = set(source_nodes)
@@ -166,7 +157,7 @@ _result = json.dumps({
     "flooded_nodes": list(flooded),
     "steps_taken":   steps_done
 })
-del edges_raw, source_nodes
+del edges_json, sources_json, source_nodes
 _result
   `);
 

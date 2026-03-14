@@ -1,5 +1,6 @@
 import type { Map as MLMap } from 'maplibre-gl';
 import type { AoiDraw } from '../aoi.js';
+import type { WaterwayGraphData } from './sidebar/WaterwaysSection';
 import { AOISection } from './sidebar/AOISection';
 import { WaterwaysSection } from './sidebar/WaterwaysSection';
 import { ComputeSection } from './sidebar/ComputeSection';
@@ -18,10 +19,11 @@ interface SidebarProps {
   aoiStatus: 'idle' | 'drawing' | 'complete';
   aoiVertices: number;
   computeResult: { nodesCount: number; edgesCount: number; componentsCount: number } | null;
+  waterwayGraph: WaterwayGraphData | null;
   onStartDrawing: () => void;
   onClearAoi: () => void;
   onComputeResult: (data: { nodesCount: number; edgesCount: number; componentsCount: number }) => void;
-  onWaterwaysResult: (waterways: number, components: number) => void;
+  onWaterwaysResult: (waterways: number, components: number, graphData: WaterwayGraphData) => void;
 }
 
 export function Sidebar({
@@ -33,6 +35,7 @@ export function Sidebar({
   aoiStatus,
   aoiVertices,
   computeResult,
+  waterwayGraph,
   onStartDrawing,
   onClearAoi,
   onComputeResult,
@@ -75,6 +78,7 @@ export function Sidebar({
             aoi={aoi}
             pyodideReady={pyodideStatus === 'ready'}
             aoiComplete={aoiStatus === 'complete'}
+            waterwayGraph={waterwayGraph}
             onResult={onComputeResult}
           />
 

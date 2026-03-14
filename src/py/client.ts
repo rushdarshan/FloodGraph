@@ -47,7 +47,7 @@ export type StatusHandler = (status: StatusResult) => void;
 export class PyWorkerClient {
   private worker: Worker;
   private pending = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
-  private statusHandlers: StatusHandler[] = [];
+  private statusHandlers = new Set<StatusHandler>();
   private _idCounter = 0;
 
   constructor() {
@@ -91,12 +91,11 @@ export class PyWorkerClient {
   // ─── Status subscription ─────────────────────────────────────────────────────
 
   onStatus(handler: StatusHandler): void {
-    this.statusHandlers.push(handler);
+    this.statusHandlers.add(handler);
   }
 
   offStatus(handler: StatusHandler): void {
-    const idx = this.statusHandlers.indexOf(handler);
-    if (idx !== -1) this.statusHandlers.splice(idx, 1);
+    this.statusHandlers.delete(handler);
   }
 
   // ─── Low-level call ───────────────────────────────────────────────────────────

@@ -6,11 +6,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui
 import { Badge } from '../ui/badge';
 import { fetchKeralaWaterways, buildProximityEdges, colorComponentsGeoJSON } from '../../waterways.js';
 import { setWaterwaysLayer } from '../../map.js';
-import { getPyWorker } from '../../py/client.js';
+import { getPyWorker, type ConnectivityEdge } from '../../py/client.js';
+
+export interface WaterwayGraphData {
+  edges: ConnectivityEdge[];
+  nodeMap: Record<string, [number, number]>;
+}
 
 interface WaterwaysSectionProps {
   map: MLMap | null;
-  onResult: (waterways: number, components: number) => void;
+  onResult: (waterways: number, components: number, graphData: WaterwayGraphData) => void;
 }
 
 export function WaterwaysSection({ map, onResult }: WaterwaysSectionProps) {
@@ -57,7 +62,13 @@ export function WaterwaysSection({ map, onResult }: WaterwaysSectionProps) {
       // 6. Update UI
       setWaterwaysCount(data.nodes.length);
       setComponentsCount(result.num_components);
-      onResult(data.nodes.length, result.num_components);
+
+      // Build node position map for downstream consumers (ComputeSection)
+      const nodeMap: Record<string, [number, number]> = {};
+      for (const node of data.nodes) {
+        nodeMap[node.id] = node.centroid;
+      }
+      onResult(data.nodes.length, result.num_components, { edges, nodeMap });
 
       const topSize = result.component_sizes[0] ?? 0;
       setStatusMsg(

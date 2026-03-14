@@ -3,6 +3,7 @@ import type { Map as MLMap } from 'maplibre-gl';
 import { Cpu, Play, Loader2, AlertCircle } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
+import type { WaterwayGraphData } from './WaterwaysSection';
 import { AoiDraw, syntheticNodes, syntheticEdges } from '../../aoi.js';
 import { getPyWorker, type ConnectivityEdge } from '../../py/client.js';
 import { setConnectivityLayer, setFloodNodesLayer, clearOverlayLayers } from '../../map.js';
@@ -12,6 +13,7 @@ interface ComputeSectionProps {
   aoi: AoiDraw | null;
   pyodideReady: boolean;
   aoiComplete: boolean;
+  waterwayGraph: WaterwayGraphData | null;
   onResult: (data: { nodesCount: number; edgesCount: number; componentsCount: number }) => void;
 }
 
@@ -20,38 +22,51 @@ export function ComputeSection({
   aoi,
   pyodideReady,
   aoiComplete,
+  waterwayGraph,
   onResult,
 }: ComputeSectionProps) {
   const [status, setStatus] = useState<'idle' | 'running' | 'complete' | 'error'>('idle');
   const [statusMsg, setStatusMsg] = useState('');
-  const canRun = pyodideReady && aoiComplete && map !== null && aoi !== null;
+
+  // Can run with waterway data OR with AOI-based synthetic data
+  const hasWaterways = waterwayGraph !== null;
+  const canRun = pyodideReady && map !== null && (hasWaterways || (aoiComplete && aoi !== null));
+
+  /** Resolve edges + positions from real waterway data or synthetic AOI grid */
+  function getGraphData(): { edges: ConnectivityEdge[]; positions: Record<string, [number, number]>; nodeIds: string[] } | null {
+    if (hasWaterways) {
+      const nodeIds = Object.keys(waterwayGraph.nodeMap);
+      return { edges: waterwayGraph.edges, positions: waterwayGraph.nodeMap, nodeIds };
+    }
+    // Fallback: synthetic AOI grid
+    const polygon = aoi?.getPolygon();
+    if (!polygon) return null;
+    const { nodes, positions } = syntheticNodes(polygon);
+    const edgePairs = syntheticEdges();
+    const edges: ConnectivityEdge[] = edgePairs.map(([s, t]) => ({ source: s, target: t }));
+    return { edges, positions, nodeIds: nodes };
+  }
 
   const handleConnectivity = async () => {
     if (!canRun) return;
-    const polygon = aoi!.getPolygon();
-    if (!polygon) return;
+    const data = getGraphData();
+    if (!data) return;
 
     setStatus('running');
-    setStatusMsg('Running connectivity analysis…');
+    setStatusMsg(`Running connectivity on ${data.nodeIds.length.toLocaleString()} nodes…`);
     clearOverlayLayers(map!);
 
     try {
-      const { positions } = syntheticNodes(polygon);
-      const edgePairs = syntheticEdges();
-      const edges: ConnectivityEdge[] = edgePairs.map(([s, t]) => ({ source: s, target: t }));
-      // Simulate a "broken" network by removing ~20% of edges
-      const brokenEdges = edges.filter((_, i) => i % 5 !== 0);
-
       const worker = getPyWorker();
-      const result = await worker.connectivity(brokenEdges);
+      const result = await worker.connectivity(data.edges);
 
-      setConnectivityLayer(map!, positions, result.components);
+      setConnectivityLayer(map!, data.positions, result.components);
 
       setStatusMsg(`${result.num_components} component(s) found`);
       setStatus('complete');
       onResult({
-        nodesCount: Object.keys(positions).length,
-        edgesCount: brokenEdges.length,
+        nodesCount: data.nodeIds.length,
+        edgesCount: data.edges.length,
         componentsCount: result.num_components,
       });
     } catch (err) {
@@ -62,24 +77,21 @@ export function ComputeSection({
 
   const handleFloodBFS = async () => {
     if (!canRun) return;
-    const polygon = aoi!.getPolygon();
-    if (!polygon) return;
+    const data = getGraphData();
+    if (!data) return;
 
     setStatus('running');
-    setStatusMsg('Running flood simulation…');
+    setStatusMsg(`Running flood BFS on ${data.nodeIds.length.toLocaleString()} nodes…`);
     clearOverlayLayers(map!);
 
     try {
-      const { nodes, positions } = syntheticNodes(polygon);
-      const edgePairs = syntheticEdges();
-      const edges: ConnectivityEdge[] = edgePairs.map(([s, t]) => ({ source: s, target: t }));
-      const sourceNodes = nodes.slice(0, 3);
+      const sourceNodes = data.nodeIds.slice(0, 3);
 
       const worker = getPyWorker();
-      const result = await worker.toyFlood(edges, sourceNodes, 4);
+      const result = await worker.toyFlood(data.edges, sourceNodes, 4);
 
       const floodCoords = result.flooded_nodes
-        .map((id) => positions[id])
+        .map((id) => data.positions[id])
         .filter(Boolean) as [number, number][];
 
       setFloodNodesLayer(map!, floodCoords);
@@ -101,7 +113,9 @@ export function ComputeSection({
             Graph Compute (Pyodide)
           </CardTitle>
           <CardDescription className="text-xs">
-            Run graph algorithms in-browser
+            {hasWaterways
+              ? 'Run algorithms on real waterway graph'
+              : 'Run graph algorithms in-browser'}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -110,7 +124,7 @@ export function ComputeSection({
               <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
               <div className="text-xs">
                 {!pyodideReady && <p>Waiting for Pyodide to load...</p>}
-                {pyodideReady && !aoiComplete && <p>Draw an AOI polygon first</p>}
+                {pyodideReady && !hasWaterways && !aoiComplete && <p>Fetch waterways or draw an AOI polygon first</p>}
               </div>
             </div>
           )}

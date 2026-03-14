@@ -75,7 +75,7 @@ export async function fetchKeralaWaterways(
   onStatus('Querying Overpass API…');
 
   const controller = new AbortController();
-  const timeoutId  = setTimeout(() => controller.abort(), 30_000);
+  const timeoutId  = setTimeout(() => controller.abort(), 90_000);
 
   let resp: Response;
   try {

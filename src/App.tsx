@@ -9,6 +9,7 @@ import { useIsMobile } from './components/ui/use-mobile';
 import { AoiDraw } from './aoi.js';
 import { clearOverlayLayers } from './map.js';
 import { getPyWorker } from './py/client.js';
+import type { WaterwayGraphData } from './components/sidebar/WaterwaysSection';
 
 // ─── Service Worker ───────────────────────────────────────────────────────────
 function registerServiceWorker(): void {
@@ -44,6 +45,9 @@ export default function App() {
     edgesCount: number;
     componentsCount: number;
   } | null>(null);
+
+  // Waterway graph data (populated after WaterwaysSection fetch)
+  const [waterwayGraph, setWaterwayGraph] = useState<WaterwayGraphData | null>(null);
 
   // Register SW on mount
   useEffect(() => {
@@ -128,11 +132,12 @@ export default function App() {
     aoiStatus,
     aoiVertices,
     computeResult,
+    waterwayGraph,
     onStartDrawing: handleStartDrawing,
     onClearAoi: handleClearAoi,
     onComputeResult: setComputeResult,
-    onWaterwaysResult: (_waterways: number, _components: number) => {
-      // waterways result is handled within WaterwaysSection
+    onWaterwaysResult: (_waterways: number, _components: number, graphData: WaterwayGraphData) => {
+      setWaterwayGraph(graphData);
     },
   };
 
