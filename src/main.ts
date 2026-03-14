@@ -32,11 +32,16 @@ async function registerServiceWorker(): Promise<void> {
 function initNetworkStatus(): void {
   const dot  = document.getElementById('status-dot')!;
   const text = document.getElementById('status-text')!;
+  const pill = document.getElementById('status-pill');
 
   function update(): void {
     const online = navigator.onLine;
-    dot.className  = online ? '' : 'offline';
+    dot.className    = online ? '' : 'offline';
     text.textContent = online ? 'Online – panning will cache tiles' : 'Offline – using cached tiles';
+    if (pill) {
+      pill.textContent = online ? '● Online' : '● Offline';
+      pill.className   = `map-pill ${online ? 'online' : 'offline'}`;
+    }
   }
 
   window.addEventListener('online',  update);
@@ -233,11 +238,17 @@ function initComputeSection(map: MLMap, aoi: AoiDraw): void {
   const worker = getPyWorker();
 
   // Forward worker status to UI
+  const pyodidePill = document.getElementById('pyodide-pill');
   worker.onStatus(({ status, message }) => {
     if (status === 'loading') {
       statusEl.textContent = `⏳ ${message}`;
+      if (pyodidePill) pyodidePill.textContent = `⬡ ${message}`;
     } else if (status === 'ready') {
       statusEl.textContent = '✓ Pyodide ready';
+      if (pyodidePill) {
+        pyodidePill.textContent = '⬡ Pyodide ready';
+        pyodidePill.style.color = 'var(--accent-green-text)';
+      }
     }
   });
 
@@ -434,6 +445,12 @@ function initWaterwaysSection(map: MLMap): void {
         `${result.num_components} connected component(s)`;
       resultsEl.style.display = 'block';
       btn.textContent = '🔄 Re-fetch Waterways';
+
+      // Update hero stat cards
+      const statW = document.getElementById('stat-waterways');
+      const statC = document.getElementById('stat-components');
+      if (statW) statW.textContent = data.nodes.length.toLocaleString();
+      if (statC) statC.textContent = result.num_components.toString();
 
     } catch (err) {
       setStatus(`⚠ ${err instanceof Error ? err.message : String(err)}`);

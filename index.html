@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#1a2744" />
+  <meta name="theme-color" content="#0d1117" />
   <meta name="description" content="NeerNet – Serverless offline disaster connectivity simulator" />
   <link rel="manifest" href="/manifest.json" />
   <link rel="icon" href="/icon-192.png" type="image/png" />
@@ -21,152 +21,261 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg-dark:    #111827;
-      --bg-panel:   #1f2937;
-      --bg-card:    #374151;
-      --accent:     #3b82f6;
-      --accent-h:   #2563eb;
-      --success:    #10b981;
-      --warning:    #f59e0b;
-      --danger:     #ef4444;
-      --text:       #f9fafb;
-      --text-muted: #9ca3af;
-      --border:     #374151;
-      --sidebar-w:  320px;
+      --bg-canvas:         #0d1117;
+      --bg-surface:        #161b22;
+      --bg-elevated:       #21262d;
+      --border:            #30363d;
+      --border-muted:      #21262d;
+      --text-primary:      #e6edf3;
+      --text-secondary:    #8b949e;
+      --text-muted:        #484f58;
+      --accent-blue:       #1f6feb;
+      --accent-green:      #238636;
+      --accent-red:        #da3633;
+      --accent-blue-text:  #58a6ff;
+      --accent-green-text: #3fb950;
+      --accent-red-text:   #ff7b72;
+      --accent-amber:      #d29922;
     }
 
-    html, body { height: 100%; overflow: hidden; font-family: system-ui, sans-serif; background: var(--bg-dark); color: var(--text); }
+    html, body {
+      height: 100%; overflow: hidden;
+      font-family: -apple-system, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg-canvas);
+      color: var(--text-primary);
+      font-size: 13px;
+      line-height: 1.5;
+    }
 
     /* ── Layout ─────────────────────────────────────────────── */
     #app { display: flex; height: 100%; }
-    #map  { flex: 1; position: relative; }
+    #map { flex: 1; position: relative; background: var(--bg-surface); }
 
     /* ── Sidebar ─────────────────────────────────────────────── */
     #sidebar {
-      width: var(--sidebar-w);
+      width: 240px;
+      flex-shrink: 0;
       display: flex;
       flex-direction: column;
-      background: var(--bg-panel);
-      border-right: 1px solid var(--border);
+      background: var(--bg-canvas);
+      border-right: 0.5px solid var(--border);
       overflow-y: auto;
+      overflow-x: hidden;
       z-index: 10;
     }
 
+    /* Header */
     .sidebar-header {
-      padding: 16px;
-      border-bottom: 1px solid var(--border);
-      background: var(--bg-dark);
+      padding: 14px 16px;
+      border-bottom: 0.5px solid var(--border);
     }
-    .sidebar-header h1 { font-size: 1.25rem; font-weight: 700; color: var(--accent); letter-spacing: .04em; }
-    .sidebar-header p  { font-size: .75rem; color: var(--text-muted); margin-top: 2px; }
-
-    .sidebar-section { padding: 12px 16px; border-bottom: 1px solid var(--border); }
-    .sidebar-section h2 { font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; color: var(--text-muted); margin-bottom: 8px; }
-
-    /* Status bar */
-    #status-bar {
-      display: flex; align-items: center; gap: 8px;
-      padding: 8px 16px;
-      font-size: .75rem; color: var(--text-muted);
-      border-bottom: 1px solid var(--border);
-      background: var(--bg-dark);
+    .sidebar-header .logo {
+      font-size: 15px; font-weight: 600;
+      color: var(--accent-blue-text);
+      letter-spacing: 0.01em;
     }
-    #status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); flex-shrink: 0; }
-    #status-dot.offline { background: var(--danger); }
-    #status-dot.loading { background: var(--warning); animation: pulse 1s infinite; }
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
-
-    /* ── Buttons ────────────────────────────────────────────── */
-    .btn {
-      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-      padding: 8px 14px; border-radius: 6px; border: none;
-      cursor: pointer; font-size: .8rem; font-weight: 600; transition: background .15s, opacity .15s;
+    .sidebar-header .logo-sub {
+      font-size: 10px; color: var(--text-muted);
+      margin-top: 3px; letter-spacing: 0.02em;
     }
-    .btn-primary  { background: var(--accent);  color: #fff; }
-    .btn-primary:hover  { background: var(--accent-h); }
-    .btn-outline  { background: transparent; border: 1px solid var(--border); color: var(--text); }
-    .btn-outline:hover  { background: var(--bg-card); }
-    .btn-danger   { background: var(--danger); color: #fff; }
-    .btn-success  { background: var(--success); color: #fff; }
-    .btn:disabled { opacity: .4; cursor: not-allowed; }
-    .btn-block    { width: 100%; }
 
-    /* ── AOI section ───────────────────────────────────────── */
-    #aoi-controls { display: flex; flex-direction: column; gap: 8px; }
-    #aoi-info { font-size: .75rem; color: var(--text-muted); min-height: 18px; }
-
-    /* ── Offline packs ─────────────────────────────────────── */
-    #packs-list { display: flex; flex-direction: column; gap: 8px; }
-
-    .pack-card {
-      background: var(--bg-card);
+    /* Stats grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 12px 16px;
+      border-bottom: 0.5px solid var(--border);
+    }
+    .stat-card {
+      background: var(--bg-surface);
+      border: 0.5px solid var(--border-muted);
       border-radius: 8px;
-      padding: 12px;
+      padding: 10px 12px;
     }
-    .pack-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
-    .pack-name  { font-size: .85rem; font-weight: 600; }
-    .pack-size  { font-size: .7rem;  color: var(--text-muted); }
-    .pack-desc  { font-size: .72rem; color: var(--text-muted); margin-bottom: 10px; }
+    .stat-value {
+      font-size: 20px; font-weight: 500;
+      color: var(--accent-blue-text);
+      line-height: 1.2;
+    }
+    .stat-label {
+      font-size: 10px;
+      color: var(--text-secondary);
+      margin-top: 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
 
-    .pack-progress { height: 4px; background: var(--bg-dark); border-radius: 2px; overflow: hidden; margin-bottom: 8px; display: none; }
-    .pack-progress-bar { height: 100%; background: var(--accent); width: 0%; transition: width .3s; border-radius: 2px; }
+    /* Sidebar sections */
+    .sidebar-section {
+      padding: 12px 16px;
+      border-bottom: 0.5px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+    .section-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 2px;
+    }
 
-    .pack-status { font-size: .7rem; color: var(--text-muted); margin-bottom: 6px; min-height: 16px; }
-    .pack-status.ok     { color: var(--success); }
-    .pack-status.err    { color: var(--danger); }
+    /* Legacy status-bar kept hidden — JS still writes to its children by ID */
+    #status-bar { display: none; }
 
-    /* ── Compute section ───────────────────────────────────── */
-    #compute-controls { display: flex; flex-direction: column; gap: 8px; }
-    #compute-status { font-size: .75rem; color: var(--text-muted); min-height: 18px; white-space: pre-wrap; }
-    #compute-results { display: none; margin-top: 4px; }
+    /* ── Buttons ─────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+      padding: 7px 12px; border-radius: 6px; border: none;
+      cursor: pointer; font-size: 12px; font-weight: 500;
+      transition: filter .15s, opacity .15s;
+      width: 100%;
+    }
+    .btn:hover:not(:disabled)  { filter: brightness(1.14); }
+    .btn:active:not(:disabled) { filter: brightness(0.90); }
+    .btn:disabled { opacity: .35; cursor: not-allowed; }
+
+    .btn-primary { background: var(--accent-blue);  color: #fff; }
+    .btn-success { background: var(--accent-green); color: #fff; }
+    .btn-danger  { background: var(--accent-red);   color: #fff; }
+    .btn-ghost, .btn-outline {
+      background: transparent;
+      color: var(--text-secondary);
+      border: 0.5px solid var(--border);
+    }
+    .btn-block { width: 100%; }
+
+    /* ── Status text ─────────────────────────────────────────── */
+    .status-text {
+      font-size: 11px; color: var(--text-secondary); min-height: 15px;
+    }
+    .status-text.ok  { color: var(--accent-green-text); }
+    .status-text.err { color: var(--accent-red-text); }
+
+    /* ── Inline spinner ──────────────────────────────────────── */
+    .inline-spinner { display: none; align-items: center; gap: 6px; }
+    .inline-spinner .spin-dot {
+      width: 12px; height: 12px; border-radius: 50%;
+      border: 1.5px solid var(--border);
+      border-top-color: var(--accent-blue-text);
+      animation: spin .7s linear infinite; flex-shrink: 0;
+    }
+    .inline-spinner span { font-size: 11px; color: var(--text-secondary); }
+
+    /* ── AOI ─────────────────────────────────────────────────── */
+    #aoi-info { font-size: 11px; color: var(--text-muted); }
+
+    /* ── Offline packs ───────────────────────────────────────── */
+    #packs-list { display: flex; flex-direction: column; gap: 8px; }
+    .pack-card {
+      background: var(--bg-surface);
+      border: 0.5px solid var(--border-muted);
+      border-radius: 8px; padding: 10px 12px;
+    }
+    .pack-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px; }
+    .pack-name { font-size: 12px; font-weight: 500; color: var(--text-primary); }
+    .pack-size { font-size: 10px; color: var(--text-muted); }
+    .pack-desc { font-size: 11px; color: var(--text-secondary); margin-bottom: 8px; }
+    .pack-progress { height: 3px; background: var(--bg-elevated); border-radius: 2px; overflow: hidden; margin-bottom: 6px; display: none; }
+    .pack-progress-bar { height: 100%; background: var(--accent-blue-text); width: 0%; transition: width .3s; border-radius: 2px; }
+    .pack-status { font-size: 11px; color: var(--text-secondary); margin-bottom: 6px; min-height: 14px; }
+    .pack-status.ok  { color: var(--accent-green-text); }
+    .pack-status.err { color: var(--accent-red-text); }
+
+    /* ── Compute ─────────────────────────────────────────────── */
+    #compute-status { font-size: 11px; color: var(--text-secondary); min-height: 15px; }
+    #compute-results { display: none; }
     #compute-results details {
-      background: var(--bg-dark); border-radius: 6px;
-      font-size: .72rem; font-family: monospace; color: var(--text-muted);
+      background: var(--bg-surface);
+      border: 0.5px solid var(--border-muted);
+      border-radius: 6px;
+      font-size: 11px; font-family: monospace; color: var(--text-secondary);
     }
     #compute-results details summary {
-      padding: 7px 10px; cursor: pointer; user-select: none;
-      font-size: .72rem; color: var(--text-muted);
+      padding: 6px 10px; cursor: pointer; user-select: none;
+      font-size: 11px; color: var(--text-secondary);
     }
-    #compute-results details[open] summary { border-bottom: 1px solid var(--border); }
-    #compute-results details pre {
-      padding: 10px; max-height: 150px; overflow-y: auto; white-space: pre-wrap;
-    }
+    #compute-results details[open] summary { border-bottom: 0.5px solid var(--border); }
+    #compute-results details pre { padding: 8px 10px; max-height: 140px; overflow-y: auto; white-space: pre-wrap; }
 
-    /* ── Map overlays ──────────────────────────────────────── */
+    /* ── Map overlays ────────────────────────────────────────── */
+    #map-pills {
+      position: absolute; top: 12px; left: 12px;
+      display: flex; gap: 6px; flex-wrap: wrap;
+      z-index: 5; pointer-events: none;
+    }
+    .map-pill {
+      background: rgba(13,17,23,0.88);
+      border: 0.5px solid var(--border);
+      border-radius: 6px; padding: 5px 10px;
+      font-size: 11px; color: var(--accent-blue-text);
+      backdrop-filter: blur(4px);
+      display: inline-flex; align-items: center; gap: 5px;
+    }
+    #status-pill.online  { color: var(--accent-green-text); }
+    #status-pill.offline { color: var(--accent-red-text); }
+    #status-pill.loading { color: var(--accent-amber); }
+
+    /* AOI instruction tooltip */
     #map-instructions {
-      position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
-      background: rgba(0,0,0,.7);  backdrop-filter: blur(4px);
-      color: #fff; padding: 6px 14px; border-radius: 20px; font-size: .78rem;
+      position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+      background: rgba(13,17,23,.88); backdrop-filter: blur(4px);
+      border: 0.5px solid var(--border);
+      color: var(--text-primary); padding: 5px 14px;
+      border-radius: 20px; font-size: 11px;
       pointer-events: none; z-index: 5; display: none;
     }
 
-    /* Loader overlay */
+    /* Map loader */
     #map-loader {
       position: absolute; inset: 0;
       display: flex; align-items: center; justify-content: center;
-      background: rgba(17,24,39,.8); z-index: 100;
+      background: rgba(13,17,23,.88); z-index: 100;
       flex-direction: column; gap: 12px;
     }
     #map-loader .spinner {
-      width: 36px; height: 36px; border: 3px solid var(--border);
-      border-top-color: var(--accent); border-radius: 50%;
-      animation: spin .7s linear infinite;
+      width: 32px; height: 32px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent-blue-text);
+      border-radius: 50%; animation: spin .7s linear infinite;
     }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    #map-loader p { color: var(--text-muted); font-size: .8rem; }
+    #map-loader p { color: var(--text-secondary); font-size: 12px; }
 
-    /* ── Responsive: collapse sidebar on small screens ─────── */
+    /* ── Animations ──────────────────────────────────────────── */
+    @keyframes spin  { to { transform: rotate(360deg); } }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    /* ── Footer ──────────────────────────────────────────────── */
+    .sidebar-footer {
+      margin-top: auto; padding: 12px 16px;
+      font-size: 10px; color: var(--text-muted);
+      border-top: 0.5px solid var(--border);
+    }
+
+    /* ── Mobile ──────────────────────────────────────────────── */
     @media (max-width: 640px) {
-      #sidebar { width: 280px; position: absolute; top: 0; left: 0; bottom: 0; transform: translateX(-100%); transition: transform .25s; }
-      #sidebar.open { transform: none; box-shadow: 4px 0 20px rgba(0,0,0,.5); }
+      #sidebar {
+        width: 260px; position: absolute;
+        top: 0; left: 0; bottom: 0;
+        transform: translateX(-100%);
+        transition: transform .25s;
+      }
+      #sidebar.open {
+        transform: none;
+        box-shadow: 4px 0 20px rgba(0,0,0,.6);
+      }
       #menu-toggle { display: flex !important; }
     }
 
     #menu-toggle {
       display: none;
-      position: absolute; top: 10px; left: 10px; z-index: 20;
-      background: var(--bg-panel); border: 1px solid var(--border);
-      color: var(--text); border-radius: 6px; padding: 8px; cursor: pointer;
+      position: absolute; top: 12px; left: 12px; z-index: 20;
+      background: rgba(13,17,23,.88); border: 0.5px solid var(--border);
+      backdrop-filter: blur(4px);
+      color: var(--text-primary); border-radius: 6px;
+      padding: 7px 9px; cursor: pointer; font-size: 14px;
     }
   </style>
 </head>
@@ -177,73 +286,78 @@
     <aside id="sidebar">
 
       <div class="sidebar-header">
-        <h1>🌊 NeerNet</h1>
-        <p>FloodGraph · Offline Disaster Simulator</p>
+        <div class="logo">🌊 NeerNet</div>
+        <div class="logo-sub">FloodGraph · Offline Disaster Simulator</div>
       </div>
 
-      <!-- Online / offline status -->
+      <!-- Mission stats -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-value" id="stat-waterways">—</div>
+          <div class="stat-label">Waterways</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-components">—</div>
+          <div class="stat-label">Components</div>
+        </div>
+      </div>
+
+      <!-- Hidden – JS updates status-dot / status-text by ID -->
       <div id="status-bar">
         <div id="status-dot"></div>
         <span id="status-text">Checking connection…</span>
       </div>
 
-      <!-- AOI selection -->
-      <div class="sidebar-section">
-        <h2>Area of Interest (AOI)</h2>
-        <div id="aoi-controls">
-          <button id="btn-draw-aoi" class="btn btn-outline btn-block">✏️ Draw AOI Polygon</button>
-          <button id="btn-clear-aoi" class="btn btn-outline btn-block" disabled>🗑 Clear AOI</button>
-          <p id="aoi-info">Click the map to add polygon vertices. Double-click to close.</p>
-        </div>
-      </div>
-
       <!-- Kerala Waterways -->
       <div class="sidebar-section">
-        <h2>Kerala Waterways</h2>
-        <div id="waterways-controls">
-          <button id="btn-fetch-waterways" class="btn btn-primary btn-block">
-            🗺 Fetch Kerala Waterways
-          </button>
-          <div id="waterways-spinner" style="display:none;margin-top:8px;align-items:center;gap:6px;">
-            <div style="width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0"></div>
-            <span id="waterways-spinner-text" style="font-size:.75rem;color:var(--text-muted)">Fetching waterways…</span>
-          </div>
-          <p id="waterways-status" style="font-size:.75rem;color:var(--text-muted);margin-top:6px">
-            Fetches live OSM data · builds proximity graph · runs connectivity.
-          </p>
-          <div id="waterways-results" style="display:none;margin-top:6px">
-            <p id="waterways-count" style="font-size:.75rem;color:var(--success);font-weight:600"></p>
-          </div>
+        <div class="section-label">Kerala Waterways</div>
+        <button id="btn-fetch-waterways" class="btn btn-primary">
+          🗺 Fetch Waterways
+        </button>
+        <div id="waterways-spinner" class="inline-spinner">
+          <div class="spin-dot"></div>
+          <span id="waterways-spinner-text">Fetching waterways…</span>
+        </div>
+        <p id="waterways-status" class="status-text">
+          Fetches live OSM data · builds proximity graph · runs connectivity.
+        </p>
+        <div id="waterways-results" style="display:none">
+          <p id="waterways-count" style="font-size:11px;color:var(--accent-green-text);font-weight:500"></p>
         </div>
       </div>
 
-      <!-- Python compute -->
+      <!-- AOI -->
       <div class="sidebar-section">
-        <h2>Graph Compute (Pyodide)</h2>
-        <div id="compute-controls">
-          <button id="btn-run-connectivity" class="btn btn-primary btn-block" disabled>
-            ⚙️ Run Connectivity
-          </button>
-          <button id="btn-run-flood" class="btn btn-primary btn-block" disabled>
-            🌊 Run Flood BFS
-          </button>
-          <p id="compute-status">AOI required. Pyodide loads on first run.</p>
+        <div class="section-label">Area of Interest</div>
+        <div id="aoi-controls" style="display:flex;flex-direction:column;gap:6px">
+          <button id="btn-draw-aoi" class="btn btn-ghost">✏️ Draw AOI Polygon</button>
+          <button id="btn-clear-aoi" class="btn btn-ghost" disabled>🗑 Clear AOI</button>
+          <p id="aoi-info" class="status-text">Click map to add vertices. Double-click to close.</p>
+        </div>
+      </div>
+
+      <!-- Graph Compute -->
+      <div class="sidebar-section">
+        <div class="section-label">Graph Compute (Pyodide)</div>
+        <div id="compute-controls" style="display:flex;flex-direction:column;gap:6px">
+          <button id="btn-run-connectivity" class="btn btn-primary" disabled>⚙️ Run Connectivity</button>
+          <button id="btn-run-flood" class="btn btn-primary" disabled>🌊 Run Flood BFS</button>
+          <p id="compute-status" class="status-text">AOI required. Pyodide loads on first run.</p>
           <div id="compute-results"></div>
         </div>
       </div>
 
-      <!-- Offline packs -->
+      <!-- Offline Packs -->
       <div class="sidebar-section">
-        <h2>Offline Packs</h2>
+        <div class="section-label">Offline Packs</div>
         <div id="packs-list">
-          <p style="font-size:.75rem;color:var(--text-muted)">Loading pack index…</p>
+          <p class="status-text">Loading pack index…</p>
         </div>
       </div>
 
-      <!-- Footer -->
-      <div style="margin-top:auto; padding:12px 16px; font-size:.7rem; color:var(--text-muted)">
+      <div class="sidebar-footer">
         <div>© 2026 Darshan K. · MIT License</div>
-        <div style="margin-top:4px">FloodGraph v0.1.0</div>
+        <div style="margin-top:3px">FloodGraph v0.1.0</div>
       </div>
 
     </aside>
@@ -253,7 +367,14 @@
       <!-- Mobile sidebar toggle -->
       <button id="menu-toggle" aria-label="Toggle sidebar">☰</button>
 
-      <!-- Map instruction tooltip -->
+      <!-- Floating status pills -->
+      <div id="map-pills">
+        <span class="map-pill">📍 Kerala, India</span>
+        <span class="map-pill" id="status-pill">● Online</span>
+        <span class="map-pill" id="pyodide-pill">⬡ Pyodide loading…</span>
+      </div>
+
+      <!-- AOI instruction tooltip -->
       <div id="map-instructions">Click to add vertex · Double-click to finish</div>
 
       <!-- Initial loader -->
