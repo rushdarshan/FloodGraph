@@ -1,0 +1,33 @@
+/* MapLibre GL CSS - Required for map rendering */
+@import 'maplibre-gl/dist/maplibre-gl.css';
+
+/* Custom map controls styling */
+.maplibregl-ctrl-group button {
+  background-color: var(--color-background);
+  border-color: var(--color-border);
+}
+
+.maplibregl-ctrl-group button:hover {
+  background-color: var(--color-accent);
+}
+
+.maplibregl-popup-content {
+  background-color: var(--color-background);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+}
+
+.maplibregl-popup-close-button {
+  color: var(--color-foreground);
+}
+
+.maplibregl-popup-close-button:hover {
+  color: var(--color-destructive);
+}
+
+.maplibregl-ctrl-attrib {
+  background-color: rgb(var(--color-background) / 0.8);
+  backdrop-filter: blur(4px);
+  font-size: 0.75rem;
+}

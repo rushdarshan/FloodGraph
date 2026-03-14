@@ -1,7 +1,10 @@
 import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   base: '/FloodGraph/',
+  plugins: [react(), tailwindcss()],
   // Required for Pyodide SharedArrayBuffer support in dev
   server: {
     port: 5173,

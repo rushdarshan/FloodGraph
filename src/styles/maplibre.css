@@ -1,0 +1,15 @@
+/* MapLibre GL CSS - Required for map rendering */
+@import 'maplibre-gl/dist/maplibre-gl.css';
+
+.maplibregl-ctrl-group button {
+  background-color: var(--color-background);
+  border-color: var(--color-border);
+}
+
+.maplibregl-ctrl-group button:hover {
+  background-color: var(--color-accent);
+}
+
+.maplibregl-ctrl-attrib {
+  font-size: 0.75rem;
+}
