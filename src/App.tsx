@@ -28,7 +28,6 @@ export default function App() {
   // Map + AOI refs
   const [map, setMap] = useState<MLMap | null>(null);
   const aoiRef = useRef<AoiDraw | null>(null);
-  const [aoi, setAoi] = useState<AoiDraw | null>(null);
 
   // Pyodide state
   const [pyodideStatus, setPyodideStatus] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -96,7 +95,6 @@ export default function App() {
     setMap(m);
     const aoiDraw = new AoiDraw(m);
     aoiRef.current = aoiDraw;
-    setAoi(aoiDraw);
 
     // Track AOI changes
     aoiDraw.on('change', (polygon) => {
@@ -143,7 +141,6 @@ export default function App() {
 
   const sharedProps = {
     map,
-    aoi,
     pyodideStatus,
     pyodideProgress,
     pyodideMessage,

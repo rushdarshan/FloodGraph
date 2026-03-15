@@ -1,5 +1,4 @@
 import type { Map as MLMap } from 'maplibre-gl';
-import type { AoiDraw } from '../aoi.js';
 import type { WaterwayGraphData } from './sidebar/WaterwaysSection';
 import { AOISection } from './sidebar/AOISection';
 import { WaterwaysSection } from './sidebar/WaterwaysSection';
@@ -15,7 +14,6 @@ interface MobileDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   map: MLMap | null;
-  aoi: AoiDraw | null;
   pyodideStatus: 'loading' | 'ready' | 'error';
   pyodideProgress: number;
   pyodideMessage: string;
@@ -33,7 +31,6 @@ export function MobileDrawer({
   open,
   onOpenChange,
   map,
-  aoi,
   pyodideStatus,
   pyodideProgress,
   pyodideMessage,
@@ -84,9 +81,7 @@ export function MobileDrawer({
 
             <ComputeSection
               map={map}
-              aoi={aoi}
               pyodideReady={pyodideStatus === 'ready'}
-              aoiComplete={aoiStatus === 'complete'}
               waterwayGraph={waterwayGraph}
               onResult={(data) => {
                 onComputeResult(data);

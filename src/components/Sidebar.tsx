@@ -1,5 +1,4 @@
 import type { Map as MLMap } from 'maplibre-gl';
-import type { AoiDraw } from '../aoi.js';
 import type { WaterwayGraphData } from './sidebar/WaterwaysSection';
 import { AOISection } from './sidebar/AOISection';
 import { WaterwaysSection } from './sidebar/WaterwaysSection';
@@ -12,7 +11,6 @@ import { Separator } from './ui/separator';
 
 interface SidebarProps {
   map: MLMap | null;
-  aoi: AoiDraw | null;
   pyodideStatus: 'loading' | 'ready' | 'error';
   pyodideProgress: number;
   pyodideMessage: string;
@@ -28,7 +26,6 @@ interface SidebarProps {
 
 export function Sidebar({
   map,
-  aoi,
   pyodideStatus,
   pyodideProgress,
   pyodideMessage,
@@ -75,9 +72,7 @@ export function Sidebar({
 
           <ComputeSection
             map={map}
-            aoi={aoi}
             pyodideReady={pyodideStatus === 'ready'}
-            aoiComplete={aoiStatus === 'complete'}
             waterwayGraph={waterwayGraph}
             onResult={onComputeResult}
           />

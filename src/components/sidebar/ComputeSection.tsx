@@ -4,102 +4,50 @@ import { Cpu, Play, Loader2, AlertCircle } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import type { WaterwayGraphData } from './WaterwaysSection';
-import { AoiDraw, syntheticNodes, syntheticEdges } from '../../aoi.js';
-import { getPyWorker, type ConnectivityEdge } from '../../py/client.js';
-import { setConnectivityLayer, setFloodNodesLayer, setWaterwaysLayer, clearOverlayLayers } from '../../map.js';
+import { getPyWorker } from '../../py/client.js';
+import { setFloodNodesLayer, setWaterwaysLayer, clearOverlayLayers } from '../../map.js';
 
 interface ComputeSectionProps {
   map: MLMap | null;
-  aoi: AoiDraw | null;
   pyodideReady: boolean;
-  aoiComplete: boolean;
   waterwayGraph: WaterwayGraphData | null;
   onResult: (data: { nodesCount: number; edgesCount: number; componentsCount: number }) => void;
 }
 
 export function ComputeSection({
   map,
-  aoi,
   pyodideReady,
-  aoiComplete,
   waterwayGraph,
   onResult,
 }: ComputeSectionProps) {
   const [status, setStatus] = useState<'idle' | 'running' | 'complete' | 'error'>('idle');
   const [statusMsg, setStatusMsg] = useState('');
 
-  // Can run with waterway data OR with AOI-based synthetic data
   const hasWaterways = waterwayGraph !== null;
-  // Connectivity on real waterways: just re-renders the colored lines — no Python needed
-  const canRunConnectivity = map !== null && (hasWaterways || (pyodideReady && aoiComplete && aoi !== null));
-  // Flood BFS always needs Python (runs new simulation)
-  const canRunFlood = pyodideReady && map !== null && (hasWaterways || (aoiComplete && aoi !== null));
+  // Connectivity just re-renders the already-computed colored lines — no Python needed
+  const canRunConnectivity = map !== null && hasWaterways;
+  const canRunFlood = pyodideReady && map !== null && hasWaterways;
 
-  /** Synthetic AOI grid — only used as fallback when no waterways loaded */
-  function getSyntheticData(): { edges: ConnectivityEdge[]; positions: Record<string, [number, number]>; nodeIds: string[] } | null {
-    const polygon = aoi?.getPolygon();
-    if (!polygon) return null;
-    const { nodes, positions } = syntheticNodes(polygon);
-    const edgePairs = syntheticEdges();
-    const edges: ConnectivityEdge[] = edgePairs.map(([s, t]) => ({ source: s, target: t }));
-    return { edges, positions, nodeIds: nodes };
-  }
-
-  const handleConnectivity = async () => {
+  const handleConnectivity = () => {
     if (!canRunConnectivity) return;
 
-    setStatus('running');
     clearOverlayLayers(map!);
+    setWaterwaysLayer(map!, waterwayGraph.coloredGeojson);
 
-    // When real waterway data is available: skip redundant Python re-run.
-    // WaterwaysSection already ran connectivity — reuse its colored GeoJSON.
-    if (hasWaterways) {
-      setWaterwaysLayer(map!, waterwayGraph.coloredGeojson);
-      const nodeCount = Object.keys(waterwayGraph.nodeMap).length;
-      setStatusMsg(`${waterwayGraph.components.length} component(s) found`);
-      setStatus('complete');
-      onResult({
-        nodesCount: nodeCount,
-        edgesCount: waterwayGraph.edges.length,
-        componentsCount: waterwayGraph.components.length,
-      });
-      return;
-    }
-
-    // Fallback: synthetic AOI graph
-    const data = getSyntheticData();
-    if (!data) { setStatus('idle'); return; }
-    setStatusMsg(`Running connectivity on ${data.nodeIds.length} nodes…`);
-
-    try {
-      const worker = getPyWorker();
-      const result = await worker.connectivity(data.edges);
-      setConnectivityLayer(map!, data.positions, result.components);
-      setStatusMsg(`${result.num_components} component(s) found`);
-      setStatus('complete');
-      onResult({
-        nodesCount: data.nodeIds.length,
-        edgesCount: data.edges.length,
-        componentsCount: result.num_components,
-      });
-    } catch (err) {
-      setStatusMsg(err instanceof Error ? err.message : String(err));
-      setStatus('error');
-    }
+    const nodeCount = Object.keys(waterwayGraph.nodeMap).length;
+    setStatusMsg(`${waterwayGraph.components.length} component(s) found`);
+    setStatus('complete');
+    onResult({
+      nodesCount: nodeCount,
+      edgesCount: waterwayGraph.edges.length,
+      componentsCount: waterwayGraph.components.length,
+    });
   };
 
   const handleFloodBFS = async () => {
     if (!canRunFlood) return;
 
-    // Resolve edges + positions: real waterways take priority over synthetic
-    const edges = hasWaterways ? waterwayGraph.edges : getSyntheticData()?.edges;
-    const positions = hasWaterways ? waterwayGraph.nodeMap : getSyntheticData()?.positions;
-    const nodeIds = hasWaterways
-      ? Object.keys(waterwayGraph.nodeMap)
-      : (getSyntheticData()?.nodeIds ?? []);
-
-    if (!edges || !positions) return;
-
+    const nodeIds = Object.keys(waterwayGraph.nodeMap);
     setStatus('running');
     setStatusMsg(`Running flood BFS on ${nodeIds.length.toLocaleString()} nodes…`);
     clearOverlayLayers(map!);
@@ -107,10 +55,10 @@ export function ComputeSection({
     try {
       const sourceNodes = nodeIds.slice(0, 3);
       const worker = getPyWorker();
-      const result = await worker.toyFlood(edges, sourceNodes, 4);
+      const result = await worker.toyFlood(waterwayGraph.edges, sourceNodes, 4);
 
       const floodCoords = result.flooded_nodes
-        .map((id) => positions[id])
+        .map((id) => waterwayGraph.nodeMap[id])
         .filter(Boolean) as [number, number][];
 
       setFloodNodesLayer(map!, floodCoords);
@@ -134,59 +82,49 @@ export function ComputeSection({
           <CardDescription className="text-xs">
             {hasWaterways
               ? 'Run algorithms on real waterway graph'
-              : 'Run graph algorithms in-browser'}
+              : 'Fetch waterways to enable computation'}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {!canRunConnectivity && !canRunFlood && (
+          {!hasWaterways && (
             <div className="bg-muted rounded-md p-3 text-sm flex items-start gap-2 text-muted-foreground">
               <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-              <div className="text-xs">
-                {!pyodideReady && <p>Waiting for Pyodide to load...</p>}
-                {pyodideReady && !hasWaterways && !aoiComplete && <p>Fetch waterways or draw an AOI polygon first</p>}
-              </div>
+              <p className="text-xs">Fetch Kerala waterways first</p>
             </div>
           )}
 
           {status === 'running' && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-sm">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="text-muted-foreground text-xs">{statusMsg}</span>
-              </div>
+            <div className="flex items-center gap-2 text-sm">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="text-muted-foreground text-xs">{statusMsg}</span>
             </div>
           )}
 
-          {(canRunConnectivity || canRunFlood) && status !== 'running' && (
+          {hasWaterways && status !== 'running' && (
             <div className="space-y-2">
-              {canRunConnectivity && (
-                <Button
-                  onClick={handleConnectivity}
-                  className="w-full"
-                  aria-label="Run connectivity analysis"
-                >
-                  <Play className="h-4 w-4 mr-2" />
-                  Run Connectivity
-                </Button>
-              )}
-              {canRunFlood && (
-                <Button
-                  onClick={handleFloodBFS}
-                  variant="outline"
-                  className="w-full"
-                  aria-label="Run flood BFS simulation"
-                >
-                  <Play className="h-4 w-4 mr-2" />
-                  Run Flood BFS
-                </Button>
-              )}
+              <Button
+                onClick={handleConnectivity}
+                className="w-full"
+                aria-label="Run connectivity analysis"
+              >
+                <Play className="h-4 w-4 mr-2" />
+                Run Connectivity
+              </Button>
+              <Button
+                onClick={handleFloodBFS}
+                disabled={!canRunFlood}
+                variant="outline"
+                className="w-full"
+                aria-label="Run flood BFS simulation"
+              >
+                <Play className="h-4 w-4 mr-2" />
+                Run Flood BFS{!pyodideReady ? ' (waiting for Pyodide…)' : ''}
+              </Button>
             </div>
           )}
 
           {status === 'complete' && (
-            <p className="text-xs text-green-400 text-center">
-              {statusMsg}
-            </p>
+            <p className="text-xs text-green-400 text-center">{statusMsg}</p>
           )}
 
           {status === 'error' && (
