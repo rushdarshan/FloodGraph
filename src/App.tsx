@@ -67,10 +67,28 @@ export default function App() {
         setPyodideStatus('ready');
         setPyodideProgress(100);
         setPyodideMessage('Python runtime loaded successfully');
+      } else if (status === 'error') {
+        setPyodideStatus('error');
+        setPyodideMessage(message || 'Failed to load Python runtime');
       }
     };
     worker.onStatus(handler);
-    return () => worker.offStatus(handler);
+
+    // Timeout: if Pyodide hasn't loaded after 2 minutes, show error
+    const timeout = setTimeout(() => {
+      setPyodideStatus((prev) => {
+        if (prev !== 'ready') {
+          setPyodideMessage('Pyodide load timed out – check your connection and reload');
+          return 'error';
+        }
+        return prev;
+      });
+    }, 120_000);
+
+    return () => {
+      worker.offStatus(handler);
+      clearTimeout(timeout);
+    };
   }, []);
 
   // When map is ready, create AOI draw instance

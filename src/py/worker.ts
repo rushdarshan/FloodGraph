@@ -205,3 +205,6 @@ self.onmessage = async (event: MessageEvent) => {
     self.postMessage({ id, ok: false, error: message });
   }
 };
+
+// ─── Eagerly start Pyodide download on worker creation ───────────────────────
+ensureInit();
