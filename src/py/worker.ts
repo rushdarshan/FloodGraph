@@ -138,9 +138,14 @@ G.add_edges_from((e['source'], e['target']) for e in edges_list)
 
 source_nodes = json.loads(sources_json)
 
+# Filter to nodes actually in the graph (nodeMap may include isolated nodes)
+valid_sources = [n for n in source_nodes if G.has_node(n)]
+if not valid_sources:
+    valid_sources = [next(iter(G.nodes()))] if G.number_of_nodes() > 0 else []
+
 # BFS flood propagation
-flooded    = set(source_nodes)
-frontier   = list(source_nodes)
+flooded    = set(valid_sources)
+frontier   = list(valid_sources)
 steps_done = 0
 
 for _ in range(${stepsVal}):
@@ -148,6 +153,8 @@ for _ in range(${stepsVal}):
         break
     next_frontier = []
     for node in frontier:
+        if not G.has_node(node):
+            continue
         for nb in G.neighbors(node):
             if nb not in flooded:
                 flooded.add(nb)
@@ -350,7 +357,9 @@ frames   = [list(flooded)]
 
 for _ in range(${stepsVal}):
     nxt = set()
-    for n in frontier:
+    for n in list(frontier):
+        if not G.has_node(n):
+            continue
         for m in G.neighbors(n):
             if m not in flooded:
                 nxt.add(m)
@@ -368,9 +377,17 @@ _result
   return JSON.parse(result as string) as AnimatedFloodResult;
 }
 
+// ─── Job serialization queue ──────────────────────────────────────────────────
+// Pyodide shares ONE Python namespace across all runPythonAsync calls. If two
+// messages are handled concurrently (possible because onmessage is async and JS
+// delivers the next message while the first is awaiting Pyodide), they corrupt
+// shared Python variables (G, edges_json, …). This queue ensures strict serial
+// execution: onmessage enqueues synchronously, jobs run one at a time.
+let _jobQueue: Promise<void> = Promise.resolve();
+
 // ─── Message dispatcher ───────────────────────────────────────────────────────
 
-self.onmessage = async (event: MessageEvent) => {
+self.onmessage = (event: MessageEvent) => {           // ← sync, NOT async
   const { id, type, payload } = event.data as {
     id: string;
     type: 'ping' | 'connectivity' | 'toy_flood' | 'risk_score' | 'watershed_stats' | 'critical_path' | 'animated_flood';
@@ -383,41 +400,44 @@ self.onmessage = async (event: MessageEvent) => {
     return;
   }
 
-  try {
-    await ensureInit();
+  // Append job to queue; previous job must complete before this one starts
+  _jobQueue = _jobQueue.then(async () => {
+    try {
+      await ensureInit();
 
-    let result: unknown;
+      let result: unknown;
 
-    switch (type) {
-      case 'connectivity':
-        result = await runConnectivity(payload);
-        break;
-      case 'toy_flood':
-        result = await runToyFlood(payload);
-        break;
-      case 'risk_score':
-        result = await runRiskScore(payload);
-        break;
-      case 'watershed_stats':
-        result = await runWatershedStats(payload);
-        break;
-      case 'critical_path':
-        result = await runCriticalPath(payload);
-        break;
-      case 'animated_flood':
-        result = await runAnimatedFlood(payload);
-        break;
-      default: {
-        const exhaustive: never = type;
-        throw new Error(`Unknown job type: ${exhaustive}`);
+      switch (type) {
+        case 'connectivity':
+          result = await runConnectivity(payload);
+          break;
+        case 'toy_flood':
+          result = await runToyFlood(payload);
+          break;
+        case 'risk_score':
+          result = await runRiskScore(payload);
+          break;
+        case 'watershed_stats':
+          result = await runWatershedStats(payload);
+          break;
+        case 'critical_path':
+          result = await runCriticalPath(payload);
+          break;
+        case 'animated_flood':
+          result = await runAnimatedFlood(payload);
+          break;
+        default: {
+          const exhaustive: never = type;
+          throw new Error(`Unknown job type: ${exhaustive}`);
+        }
       }
-    }
 
-    self.postMessage({ id, ok: true, result });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    self.postMessage({ id, ok: false, error: message });
-  }
+      self.postMessage({ id, ok: true, result });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      self.postMessage({ id, ok: false, error: message });
+    }
+  });
 };
 
 // ─── Eagerly start Pyodide download on worker creation ───────────────────────
