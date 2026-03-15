@@ -7,7 +7,7 @@ import { Header } from './components/Header';
 import { Toaster } from './components/ui/sonner';
 import { useIsMobile } from './components/ui/use-mobile';
 import { AoiDraw } from './aoi.js';
-import { clearOverlayLayers } from './map.js';
+import { clearOverlayLayers, setFloodSourceLayer, clearFloodSourceLayer } from './map.js';
 import { getPyWorker } from './py/client.js';
 import type { WaterwayGraphData } from './components/sidebar/WaterwaysSection';
 
@@ -18,6 +18,23 @@ function registerServiceWorker(): void {
     .register(`${import.meta.env.BASE_URL}sw.js`, { scope: import.meta.env.BASE_URL })
     .then((reg) => console.log('[SW] registered, scope:', reg.scope))
     .catch((err) => console.warn('[SW] registration failed:', err));
+}
+
+// ─── Nearest node finder (squared-degrees, fast O(n)) ─────────────────────────
+function findNearestNode(
+  nodeMap: Record<string, [number, number]>,
+  lon: number,
+  lat: number,
+): string | null {
+  let bestId: string | null = null;
+  let bestDistSq = Infinity;
+  for (const [id, [nLon, nLat]] of Object.entries(nodeMap)) {
+    const dx = lon - nLon;
+    const dy = lat - nLat;
+    const dSq = dx * dx + dy * dy;
+    if (dSq < bestDistSq) { bestDistSq = dSq; bestId = id; }
+  }
+  return bestId;
 }
 
 export default function App() {
@@ -48,6 +65,16 @@ export default function App() {
   // Waterway graph data (populated after WaterwaysSection fetch)
   const [waterwayGraph, setWaterwayGraph] = useState<WaterwayGraphData | null>(null);
 
+  // Selected flood source node (set by clicking the map)
+  const [selectedFloodSource, setSelectedFloodSource] = useState<string | null>(null);
+
+  // Refs for stale-closure-safe access inside map event handlers
+  const waterwayGraphRef = useRef<WaterwayGraphData | null>(null);
+  const aoiStatusRef     = useRef<'idle' | 'drawing' | 'complete'>('idle');
+
+  useEffect(() => { waterwayGraphRef.current = waterwayGraph; }, [waterwayGraph]);
+  useEffect(() => { aoiStatusRef.current = aoiStatus; }, [aoiStatus]);
+
   // Register SW on mount
   useEffect(() => {
     registerServiceWorker();
@@ -60,7 +87,6 @@ export default function App() {
       if (status === 'loading') {
         setPyodideStatus('loading');
         setPyodideMessage(message);
-        // Rough progress: count status messages
         setPyodideProgress((prev) => Math.min(prev + 20, 90));
       } else if (status === 'ready') {
         setPyodideStatus('ready');
@@ -73,7 +99,6 @@ export default function App() {
     };
     worker.onStatus(handler);
 
-    // Timeout: if Pyodide hasn't loaded after 2 minutes, show error
     const timeout = setTimeout(() => {
       setPyodideStatus((prev) => {
         if (prev !== 'ready') {
@@ -90,21 +115,31 @@ export default function App() {
     };
   }, []);
 
-  // When map is ready, create AOI draw instance
+  // When map is ready, create AOI draw instance + map click → flood source
   const handleMapReady = useCallback((m: MLMap) => {
     setMap(m);
     const aoiDraw = new AoiDraw(m);
     aoiRef.current = aoiDraw;
 
-    // Track AOI changes
     aoiDraw.on('change', (polygon) => {
-      if (polygon) {
-        setAoiStatus('complete');
-      }
+      if (polygon) setAoiStatus('complete');
     });
 
     aoiDraw.on('stop', () => {
       setAoiStatus((prev) => (prev === 'drawing' ? 'complete' : prev));
+    });
+
+    // Map click → find nearest waterway node → set as flood source
+    m.on('click', (e) => {
+      if (aoiStatusRef.current === 'drawing') return;
+      const graph = waterwayGraphRef.current;
+      if (!graph || Object.keys(graph.nodeMap).length === 0) return;
+
+      const nearestId = findNearestNode(graph.nodeMap, e.lngLat.lng, e.lngLat.lat);
+      if (nearestId) {
+        setSelectedFloodSource(nearestId);
+        setFloodSourceLayer(m, graph.nodeMap[nearestId]!);
+      }
     });
   }, []);
 
@@ -114,11 +149,9 @@ export default function App() {
       setAoiStatus('drawing');
       setAoiVertices(0);
 
-      // Track vertex count during drawing
       const trackVertices = () => {
         const poly = aoiRef.current?.getPolygon();
         if (poly && poly.geometry.coordinates[0]) {
-          // -1 because GeoJSON polygons duplicate the first point
           setAoiVertices(Math.max(0, poly.geometry.coordinates[0].length - 1));
         }
       };
@@ -128,15 +161,15 @@ export default function App() {
   }, []);
 
   const handleClearAoi = useCallback(() => {
-    if (aoiRef.current) {
-      aoiRef.current.clear();
-    }
+    if (aoiRef.current) aoiRef.current.clear();
     if (map) {
       clearOverlayLayers(map);
+      clearFloodSourceLayer(map);
     }
     setAoiStatus('idle');
     setAoiVertices(0);
     setComputeResult(null);
+    setSelectedFloodSource(null);
   }, [map]);
 
   const sharedProps = {
@@ -148,6 +181,7 @@ export default function App() {
     aoiVertices,
     computeResult,
     waterwayGraph,
+    selectedFloodSource,
     onStartDrawing: handleStartDrawing,
     onClearAoi: handleClearAoi,
     onComputeResult: setComputeResult,

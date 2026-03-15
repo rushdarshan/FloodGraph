@@ -315,12 +315,65 @@ _result
   return JSON.parse(result as string) as CriticalPathResult;
 }
 
+// ─── Animated Flood BFS ───────────────────────────────────────────────────────
+
+interface AnimatedFloodResult {
+  frames: string[][];
+}
+
+async function runAnimatedFlood(payload: unknown): Promise<AnimatedFloodResult> {
+  const { edges, source_nodes, steps } = payload as {
+    edges: ConnectivityEdge[];
+    source_nodes: string[];
+    steps: number;
+  };
+
+  const stepsVal = Number.isFinite(steps) ? Math.max(1, Math.min(steps, 20)) : 10;
+
+  pyodide!.globals.set('edges_json',   JSON.stringify(edges));
+  pyodide!.globals.set('sources_json', JSON.stringify(source_nodes));
+
+  const result = await pyodide!.runPythonAsync(`
+import json, networkx as nx
+
+edges_list = json.loads(edges_json)
+G = nx.Graph()
+for e in edges_list:
+    G.add_edge(e['source'], e['target'])
+
+source = json.loads(sources_json)
+valid_source = [s for s in source if G.has_node(s)]
+
+flooded  = set(valid_source)
+frontier = set(valid_source)
+frames   = [list(flooded)]
+
+for _ in range(${stepsVal}):
+    nxt = set()
+    for n in frontier:
+        for m in G.neighbors(n):
+            if m not in flooded:
+                nxt.add(m)
+    flooded  |= nxt
+    frontier  = nxt
+    frames.append(list(flooded))
+    if not frontier:
+        break
+
+_result = json.dumps({"frames": frames})
+del edges_json, sources_json
+_result
+  `);
+
+  return JSON.parse(result as string) as AnimatedFloodResult;
+}
+
 // ─── Message dispatcher ───────────────────────────────────────────────────────
 
 self.onmessage = async (event: MessageEvent) => {
   const { id, type, payload } = event.data as {
     id: string;
-    type: 'ping' | 'connectivity' | 'toy_flood' | 'risk_score' | 'watershed_stats' | 'critical_path';
+    type: 'ping' | 'connectivity' | 'toy_flood' | 'risk_score' | 'watershed_stats' | 'critical_path' | 'animated_flood';
     payload: unknown;
   };
 
@@ -350,6 +403,9 @@ self.onmessage = async (event: MessageEvent) => {
         break;
       case 'critical_path':
         result = await runCriticalPath(payload);
+        break;
+      case 'animated_flood':
+        result = await runAnimatedFlood(payload);
         break;
       default: {
         const exhaustive: never = type;

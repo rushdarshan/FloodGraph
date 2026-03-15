@@ -93,6 +93,14 @@ const CRITICAL_PATH_SOURCE = 'critical-path';
 const CRITICAL_NODES_LAYER = 'critical-nodes';
 const CRITICAL_EDGES_LAYER = 'critical-edges';
 
+const FLOOD_SOURCE_SOURCE     = 'flood-source';
+const FLOOD_SOURCE_RING_LAYER = 'flood-source-ring';
+const FLOOD_SOURCE_DOT_LAYER  = 'flood-source-dot';
+
+const ANIM_FLOOD_SOURCE    = 'anim-flood';
+const ANIM_FLOOD_BGD_LAYER = 'anim-flood-flooded';
+const ANIM_FLOOD_FGD_LAYER = 'anim-flood-frontier';
+
 /**
  * Add (or update) a GeoJSON layer showing flooded nodes.
  * @param map     MapLibre map instance
@@ -274,6 +282,144 @@ export function clearOverlayLayers(map: MLMap): void {
   if (map.getLayer(CRITICAL_NODES_LAYER)) map.removeLayer(CRITICAL_NODES_LAYER);
   if (map.getLayer(CRITICAL_EDGES_LAYER)) map.removeLayer(CRITICAL_EDGES_LAYER);
   if (map.getSource(CRITICAL_PATH_SOURCE)) map.removeSource(CRITICAL_PATH_SOURCE);
+  // Animated flood layers
+  if (map.getLayer(ANIM_FLOOD_FGD_LAYER)) map.removeLayer(ANIM_FLOOD_FGD_LAYER);
+  if (map.getLayer(ANIM_FLOOD_BGD_LAYER)) map.removeLayer(ANIM_FLOOD_BGD_LAYER);
+  if (map.getSource(ANIM_FLOOD_SOURCE))   map.removeSource(ANIM_FLOOD_SOURCE);
+}
+
+// ─── Flood source marker (pulsing, persists across computations) ─────────────
+
+let _pulseTimer: ReturnType<typeof setInterval> | null = null;
+
+function _stopPulse(): void {
+  if (_pulseTimer !== null) { clearInterval(_pulseTimer); _pulseTimer = null; }
+}
+
+function _startPulse(map: MLMap): void {
+  _stopPulse();
+  let t = 0;
+  _pulseTimer = setInterval(() => {
+    t += 0.12;
+    const radius  = 16 + 8 * Math.abs(Math.sin(t));
+    const opacity = 0.15 + 0.25 * (1 - Math.abs(Math.sin(t)));
+    try {
+      if (map.getLayer(FLOOD_SOURCE_RING_LAYER)) {
+        map.setPaintProperty(FLOOD_SOURCE_RING_LAYER, 'circle-radius',  radius);
+        map.setPaintProperty(FLOOD_SOURCE_RING_LAYER, 'circle-opacity', opacity);
+      } else {
+        _stopPulse();
+      }
+    } catch { _stopPulse(); }
+  }, 50);
+}
+
+/**
+ * Add (or move) the pulsing flood-source circle marking the selected node.
+ */
+export function setFloodSourceLayer(map: MLMap, coords: [number, number]): void {
+  const geojson: GeoJSON.FeatureCollection = {
+    type: 'FeatureCollection',
+    features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: coords }, properties: {} }],
+  };
+
+  if (map.getSource(FLOOD_SOURCE_SOURCE)) {
+    (map.getSource(FLOOD_SOURCE_SOURCE) as GeoJSONSource).setData(geojson);
+    _startPulse(map);
+    return;
+  }
+
+  map.addSource(FLOOD_SOURCE_SOURCE, { type: 'geojson', data: geojson });
+
+  // Outer pulsing ring
+  map.addLayer({
+    id:     FLOOD_SOURCE_RING_LAYER,
+    type:   'circle',
+    source: FLOOD_SOURCE_SOURCE,
+    paint:  { 'circle-radius': 20, 'circle-color': '#f97316', 'circle-opacity': 0.3 },
+  });
+
+  // Inner solid dot
+  map.addLayer({
+    id:     FLOOD_SOURCE_DOT_LAYER,
+    type:   'circle',
+    source: FLOOD_SOURCE_SOURCE,
+    paint:  {
+      'circle-radius':       9,
+      'circle-color':        '#f97316',
+      'circle-opacity':      1,
+      'circle-stroke-width': 3,
+      'circle-stroke-color': '#fff',
+    },
+  });
+
+  _startPulse(map);
+}
+
+/** Remove the flood source marker and stop the pulse animation. */
+export function clearFloodSourceLayer(map: MLMap): void {
+  _stopPulse();
+  if (map.getLayer(FLOOD_SOURCE_DOT_LAYER))  map.removeLayer(FLOOD_SOURCE_DOT_LAYER);
+  if (map.getLayer(FLOOD_SOURCE_RING_LAYER)) map.removeLayer(FLOOD_SOURCE_RING_LAYER);
+  if (map.getSource(FLOOD_SOURCE_SOURCE))    map.removeSource(FLOOD_SOURCE_SOURCE);
+}
+
+// ─── Animated flood layer ────────────────────────────────────────────────────
+
+/**
+ * Add (or update) the animated BFS flood layer.
+ * - frontier nodes: bright red circles (new this step)
+ * - already-flooded nodes: dark red circles
+ */
+export function setAnimatedFloodLayer(
+  map: MLMap,
+  nodeMap: Record<string, [number, number]>,
+  allFloodedIds: string[],
+  frontierIds: string[],
+): void {
+  const frontierSet = new Set(frontierIds);
+  const features: GeoJSON.Feature[] = [];
+
+  for (const id of allFloodedIds) {
+    const coords = nodeMap[id];
+    if (!coords) continue;
+    features.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: coords },
+      properties: { _kind: frontierSet.has(id) ? 'frontier' : 'flooded' },
+    });
+  }
+
+  const geojson: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features };
+
+  if (map.getSource(ANIM_FLOOD_SOURCE)) {
+    (map.getSource(ANIM_FLOOD_SOURCE) as GeoJSONSource).setData(geojson);
+    return;
+  }
+
+  map.addSource(ANIM_FLOOD_SOURCE, { type: 'geojson', data: geojson });
+
+  map.addLayer({
+    id:     ANIM_FLOOD_BGD_LAYER,
+    type:   'circle',
+    source: ANIM_FLOOD_SOURCE,
+    filter: ['==', ['get', '_kind'], 'flooded'],
+    paint:  { 'circle-radius': 5, 'circle-color': '#7f1d1d', 'circle-opacity': 0.7 },
+  });
+
+  map.addLayer({
+    id:     ANIM_FLOOD_FGD_LAYER,
+    type:   'circle',
+    source: ANIM_FLOOD_SOURCE,
+    filter: ['==', ['get', '_kind'], 'frontier'],
+    paint:  {
+      'circle-radius':       8,
+      'circle-color':        '#ef4444',
+      'circle-opacity':      0.9,
+      'circle-stroke-width': 1.5,
+      'circle-stroke-color': '#fff',
+    },
+  });
 }
 
 /**

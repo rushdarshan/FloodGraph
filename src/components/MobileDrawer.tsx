@@ -21,6 +21,7 @@ interface MobileDrawerProps {
   aoiVertices: number;
   computeResult: { nodesCount: number; edgesCount: number; componentsCount: number } | null;
   waterwayGraph: WaterwayGraphData | null;
+  selectedFloodSource: string | null;
   onStartDrawing: () => void;
   onClearAoi: () => void;
   onComputeResult: (data: { nodesCount: number; edgesCount: number; componentsCount: number }) => void;
@@ -38,6 +39,7 @@ export function MobileDrawer({
   aoiVertices,
   computeResult,
   waterwayGraph,
+  selectedFloodSource,
   onStartDrawing,
   onClearAoi,
   onComputeResult,
@@ -83,6 +85,7 @@ export function MobileDrawer({
               map={map}
               pyodideReady={pyodideStatus === 'ready'}
               waterwayGraph={waterwayGraph}
+              selectedFloodSource={selectedFloodSource}
               onResult={(data) => {
                 onComputeResult(data);
                 onOpenChange(false);

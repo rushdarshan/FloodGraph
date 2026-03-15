@@ -65,6 +65,10 @@ export interface CriticalPathResult {
   bridge_count: number;
 }
 
+export interface AnimatedFloodResult {
+  frames: string[][];
+}
+
 export type StatusHandler = (status: StatusResult) => void;
 
 // ─── PyWorkerClient ───────────────────────────────────────────────────────────
@@ -203,6 +207,21 @@ export class PyWorkerClient {
    */
   criticalPath(edges: ConnectivityEdge[]): Promise<CriticalPathResult> {
     return this._call<CriticalPathResult>('critical_path', { edges }, 180_000);
+  }
+
+  /**
+   * Run animated BFS flood and return all frames (cumulative flooded at each step).
+   */
+  animatedFlood(
+    edges: ConnectivityEdge[],
+    sourceNodes: string[],
+    steps = 10,
+  ): Promise<AnimatedFloodResult> {
+    return this._call<AnimatedFloodResult>(
+      'animated_flood',
+      { edges, source_nodes: sourceNodes, steps },
+      300_000,
+    );
   }
 
   /** Terminate the underlying worker. */

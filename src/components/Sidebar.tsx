@@ -18,6 +18,7 @@ interface SidebarProps {
   aoiVertices: number;
   computeResult: { nodesCount: number; edgesCount: number; componentsCount: number } | null;
   waterwayGraph: WaterwayGraphData | null;
+  selectedFloodSource: string | null;
   onStartDrawing: () => void;
   onClearAoi: () => void;
   onComputeResult: (data: { nodesCount: number; edgesCount: number; componentsCount: number }) => void;
@@ -33,6 +34,7 @@ export function Sidebar({
   aoiVertices,
   computeResult,
   waterwayGraph,
+  selectedFloodSource,
   onStartDrawing,
   onClearAoi,
   onComputeResult,
@@ -74,6 +76,7 @@ export function Sidebar({
             map={map}
             pyodideReady={pyodideStatus === 'ready'}
             waterwayGraph={waterwayGraph}
+            selectedFloodSource={selectedFloodSource}
             onResult={onComputeResult}
           />
 
