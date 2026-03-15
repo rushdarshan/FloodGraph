@@ -45,19 +45,21 @@ function postStatus(message: string, status: 'loading' | 'ready' | 'error'): voi
 async function initPyodide(): Promise<void> {
   if (pyodide) return;
 
-  postStatus('Loading Pyodide runtime…', 'loading');
+  postStatus('Downloading Pyodide runtime (30–50 MB)…', 'loading');
 
   // Dynamic import – works in ES module workers (no importScripts needed)
   const pyodideModule = await import(
     /* @vite-ignore */ `${PYODIDE_CDN}pyodide.mjs`
   ) as { loadPyodide: LoadPyodide };
 
+  postStatus('Compiling WebAssembly…', 'loading');
   pyodide = await pyodideModule.loadPyodide({ indexURL: PYODIDE_CDN });
 
-  postStatus('Installing networkx…', 'loading');
+  postStatus('Installing Python packages…', 'loading');
   await pyodide.loadPackage(['networkx']);
 
   // Pre-import modules for speed on first call
+  postStatus('Initializing Python environment…', 'loading');
   await pyodide.runPythonAsync(`
 import networkx as nx
 print("NeerNet Pyodide ready: networkx", nx.__version__)

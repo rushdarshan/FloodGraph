@@ -21,13 +21,14 @@
 
 // ─── Cache names ──────────────────────────────────────────────────────────────
 
-const CACHE_VERSION   = 'v2';
+const CACHE_VERSION   = 'v3';
 const SHELL_CACHE     = `neernet-shell-${CACHE_VERSION}`;
 const TILE_CACHE      = `neernet-tiles-${CACHE_VERSION}`;
 const STYLE_CACHE     = `neernet-styles-${CACHE_VERSION}`;
-const OFFLINE_PACKS   = `neernet-offline-packs-v1`;     // written by download code
+const PYODIDE_CACHE   = `neernet-pyodide-v1`;            // Pyodide WASM + packages
+const OFFLINE_PACKS   = `neernet-offline-packs-v1`;      // written by download code
 
-const ALL_CACHES = [SHELL_CACHE, TILE_CACHE, STYLE_CACHE, OFFLINE_PACKS];
+const ALL_CACHES = [SHELL_CACHE, TILE_CACHE, STYLE_CACHE, PYODIDE_CACHE, OFFLINE_PACKS];
 
 // Derive base URL from the SW's own location so paths work under any sub-path
 // (e.g. /FloodGraph/ on GitHub Pages as well as / in local dev).
@@ -41,6 +42,27 @@ const SHELL_ASSETS = [
   `${BASE}offline-packs.json`,
   `${BASE}manifest.json`,
 ];
+
+// ─── Cross-Origin Isolation ──────────────────────────────────────────────────
+//
+// GitHub Pages (and most static hosts) don't serve COOP/COEP headers.
+// Without them the browser disables SharedArrayBuffer, making Pyodide fall
+// back to a much slower code path.  We inject the headers from the SW so
+// cross-origin isolation is always active.
+
+function withCOI(response) {
+  if (!response || response.type === 'opaqueredirect') return response;
+
+  const headers = new Headers(response.headers);
+  headers.set('Cross-Origin-Embedder-Policy', 'credentialless');
+  headers.set('Cross-Origin-Opener-Policy', 'same-origin');
+
+  return new Response(response.body, {
+    status:     response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
 
 // ─── URL matchers ─────────────────────────────────────────────────────────────
 
@@ -58,8 +80,16 @@ function isStyleOrSprite(url) {
   );
 }
 
+function isPyodideRequest(url) {
+  return url.hostname.includes('jsdelivr') && url.pathname.includes('pyodide');
+}
+
 function isFontGlyph(url) {
   return url.pathname.includes('/fonts/') || url.pathname.endsWith('.pbf');
+}
+
+function isPyodideCDN(url) {
+  return url.hostname === 'cdn.jsdelivr.net' && url.pathname.includes('/pyodide/');
 }
 
 function isNavigationRequest(request) {
@@ -131,39 +161,48 @@ self.addEventListener('fetch', (event) => {
   // ── PMTiles (range requests) ──────────────────────────────────────────────
 
   if (isPMTilesRequest(url)) {
-    event.respondWith(handlePMTiles(request, url));
+    event.respondWith(handlePMTiles(request, url).then(withCOI));
+    return;
+  }
+
+  // ── Pyodide CDN (WASM + packages, ~30-50 MB) ─────────────────────────────
+  // Cache-first: these are versioned/immutable CDN assets.
+
+  if (isPyodideCDN(url)) {
+    event.respondWith(cacheFirst(request, PYODIDE_CACHE).then(withCOI));
     return;
   }
 
   // ── Offline packs cache (written by download code in main.ts) ─────────────
 
   if (url.href.includes('/packs/')) {
-    event.respondWith(cacheFirst(request, OFFLINE_PACKS));
+    event.respondWith(cacheFirst(request, OFFLINE_PACKS).then(withCOI));
     return;
   }
 
   // ── Style / sprites / glyphs / font PBFs ─────────────────────────────────
 
   if (isStyleOrSprite(url) || isFontGlyph(url)) {
-    event.respondWith(staleWhileRevalidate(request, STYLE_CACHE));
+    event.respondWith(staleWhileRevalidate(request, STYLE_CACHE).then(withCOI));
     return;
   }
 
   // ── App shell (navigation) ────────────────────────────────────────────────
 
   if (isNavigationRequest(request)) {
-    event.respondWith(serveShell());
+    event.respondWith(serveShell().then(withCOI));
     return;
   }
 
   // ── Static app assets (JS / CSS chunks) ──────────────────────────────────
 
   if (url.origin === self.location.origin) {
-    event.respondWith(staleWhileRevalidate(request, SHELL_CACHE));
+    event.respondWith(staleWhileRevalidate(request, SHELL_CACHE).then(withCOI));
     return;
   }
 
-  // ── Everything else: network only ─────────────────────────────────────────
+  // ── Everything else: network only (still add COI headers) ─────────────────
+  event.respondWith(fetch(request).then(withCOI).catch(() => new Response('Offline', { status: 503 })));
 });
 
 // ─── Strategy helpers ─────────────────────────────────────────────────────────
