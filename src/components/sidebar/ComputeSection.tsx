@@ -5,6 +5,7 @@ import { Button } from '../ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import type { WaterwayGraphData } from './WaterwaysSection';
 import { getPyWorker } from '../../py/client.js';
+import { colorComponentsGeoJSON } from '../../waterways.js';
 import { setFloodNodesLayer, setWaterwaysLayer, clearOverlayLayers } from '../../map.js';
 
 interface ComputeSectionProps {
@@ -24,28 +25,38 @@ export function ComputeSection({
   const [statusMsg, setStatusMsg] = useState('');
 
   const hasWaterways = waterwayGraph !== null;
-  // Connectivity just re-renders the already-computed colored lines — no Python needed
-  const canRunConnectivity = map !== null && hasWaterways;
-  const canRunFlood = pyodideReady && map !== null && hasWaterways;
+  const canRun = pyodideReady && map !== null && hasWaterways;
 
-  const handleConnectivity = () => {
-    if (!canRunConnectivity) return;
+  const handleConnectivity = async () => {
+    if (!canRun) return;
 
+    setStatus('running');
+    setStatusMsg('Running NetworkX connected_components via Pyodide…');
     clearOverlayLayers(map!);
-    setWaterwaysLayer(map!, waterwayGraph.coloredGeojson);
 
-    const nodeCount = Object.keys(waterwayGraph.nodeMap).length;
-    setStatusMsg(`${waterwayGraph.components.length} component(s) found`);
-    setStatus('complete');
-    onResult({
-      nodesCount: nodeCount,
-      edgesCount: waterwayGraph.edges.length,
-      componentsCount: waterwayGraph.components.length,
-    });
+    try {
+      const worker = getPyWorker();
+      const result = await worker.connectivity(waterwayGraph.edges);
+
+      const recolored = colorComponentsGeoJSON(waterwayGraph.geojson, result.components);
+      setWaterwaysLayer(map!, recolored);
+
+      const nodeCount = Object.keys(waterwayGraph.nodeMap).length;
+      setStatusMsg(`${result.num_components} component(s) · ${nodeCount.toLocaleString()} nodes`);
+      setStatus('complete');
+      onResult({
+        nodesCount: nodeCount,
+        edgesCount: waterwayGraph.edges.length,
+        componentsCount: result.num_components,
+      });
+    } catch (err) {
+      setStatusMsg(err instanceof Error ? err.message : String(err));
+      setStatus('error');
+    }
   };
 
   const handleFloodBFS = async () => {
-    if (!canRunFlood) return;
+    if (!canRun) return;
 
     const nodeIds = Object.keys(waterwayGraph.nodeMap);
     setStatus('running');
@@ -86,10 +97,14 @@ export function ComputeSection({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {!hasWaterways && (
+          {!canRun && (
             <div className="bg-muted rounded-md p-3 text-sm flex items-start gap-2 text-muted-foreground">
               <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-              <p className="text-xs">Fetch Kerala waterways first</p>
+              <p className="text-xs">
+                {!hasWaterways
+                  ? 'Fetch Kerala waterways first'
+                  : 'Waiting for Pyodide to load…'}
+              </p>
             </div>
           )}
 
@@ -100,7 +115,7 @@ export function ComputeSection({
             </div>
           )}
 
-          {hasWaterways && status !== 'running' && (
+          {canRun && status !== 'running' && (
             <div className="space-y-2">
               <Button
                 onClick={handleConnectivity}
@@ -112,13 +127,12 @@ export function ComputeSection({
               </Button>
               <Button
                 onClick={handleFloodBFS}
-                disabled={!canRunFlood}
                 variant="outline"
                 className="w-full"
                 aria-label="Run flood BFS simulation"
               >
                 <Play className="h-4 w-4 mr-2" />
-                Run Flood BFS{!pyodideReady ? ' (waiting for Pyodide…)' : ''}
+                Run Flood BFS
               </Button>
             </div>
           )}

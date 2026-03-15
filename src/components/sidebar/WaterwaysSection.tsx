@@ -11,6 +11,8 @@ import { getPyWorker, type ConnectivityEdge } from '../../py/client.js';
 export interface WaterwayGraphData {
   edges: ConnectivityEdge[];
   nodeMap: Record<string, [number, number]>;
+  /** Original uncoloured GeoJSON — used as base for re-colouring after each Pyodide run */
+  geojson: GeoJSON.FeatureCollection;
   /** Waterway GeoJSON already coloured by connected component */
   coloredGeojson: GeoJSON.FeatureCollection;
   /** Raw component arrays from the connectivity worker */
@@ -75,6 +77,7 @@ export function WaterwaysSection({ map, onResult }: WaterwaysSectionProps) {
       onResult(data.nodes.length, result.num_components, {
         edges,
         nodeMap,
+        geojson: data.geojson,
         coloredGeojson: coloredGeoJSON,
         components: result.components,
       });
