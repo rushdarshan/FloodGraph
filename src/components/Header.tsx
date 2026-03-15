@@ -42,7 +42,7 @@ export function Header({ onToggleSidebar, sidebarOpen }: HeaderProps) {
           <div>
             <h1 className="font-semibold text-base">NeerNet</h1>
             <p className="text-xs text-muted-foreground hidden sm:block">
-              FloodGraph - Offline Disaster Simulator
+              Flood Risk · Kerala Waterways
             </p>
           </div>
         </div>

@@ -11,11 +11,8 @@ import { getPyWorker, type ConnectivityEdge } from '../../py/client.js';
 export interface WaterwayGraphData {
   edges: ConnectivityEdge[];
   nodeMap: Record<string, [number, number]>;
-  /** Original uncoloured GeoJSON — used as base for re-colouring after each Pyodide run */
   geojson: GeoJSON.FeatureCollection;
-  /** Waterway GeoJSON already coloured by connected component */
   coloredGeojson: GeoJSON.FeatureCollection;
-  /** Raw component arrays from the connectivity worker */
   components: string[][];
 }
 
@@ -33,60 +30,38 @@ export function WaterwaysSection({ map, onResult }: WaterwaysSectionProps) {
   const handleFetch = async () => {
     if (!map) return;
     setStatus('loading');
-    setStatusMsg('Fetching waterways from Overpass…');
-
+    setStatusMsg('Connecting to OpenStreetMap…');
     const worker = getPyWorker();
-
-    // Forward Pyodide loading messages
     const pyStatus = ({ status: s, message }: { status: string; message: string }) => {
       if (s === 'loading') setStatusMsg(message);
-      else if (s === 'ready') setStatusMsg('Python runtime ready – running connectivity…');
+      else if (s === 'ready') setStatusMsg('Analysis engine ready — identifying connected networks…');
     };
     worker.onStatus(pyStatus);
-
     try {
-      // 1. Fetch from Overpass
-      const data = await fetchKeralaWaterways((msg: string) => setStatusMsg(msg));
-      setStatusMsg(`${data.nodes.length.toLocaleString()} features – rendering…`);
-
-      // 2. Render raw waterways
+      const data = await fetchKeralaWaterways((msg: string) => {
+        if (msg.includes('Fetching') || msg.includes('fetch')) setStatusMsg('Downloading waterway data from OpenStreetMap…');
+        else if (msg.includes('nodes') || msg.includes('way') || msg.includes('Parsing')) setStatusMsg('Processing waterway features…');
+        else setStatusMsg(msg);
+      });
+      setStatusMsg('Rendering waterways on map…');
       setWaterwaysLayer(map, data.geojson);
       map.fitBounds([74.85, 8.18, 77.84, 12.84], { padding: 20, duration: 1000 });
-
-      // 3. Build proximity graph
-      setStatusMsg('Building proximity graph (100 m threshold)…');
+      setStatusMsg('Building waterway connection graph…');
       const edges = buildProximityEdges(data.nodes, 100);
-      setStatusMsg(`Graph: ${data.nodes.length.toLocaleString()} nodes · ${edges.length.toLocaleString()} edges – running connectivity…`);
-
-      // 4. Connectivity analysis via Pyodide
+      setStatusMsg('Identifying connected waterway networks…');
       const result = await worker.connectivity(edges);
-
-      // 5. Colour components
       const coloredGeoJSON = colorComponentsGeoJSON(data.geojson, result.components);
       setWaterwaysLayer(map, coloredGeoJSON);
-
-      // 6. Update UI
       setWaterwaysCount(data.nodes.length);
       setComponentsCount(result.num_components);
-
-      // Build node position map for downstream consumers (ComputeSection)
       const nodeMap: Record<string, [number, number]> = {};
-      for (const node of data.nodes) {
-        nodeMap[node.id] = node.centroid;
-      }
-      onResult(data.nodes.length, result.num_components, {
-        edges,
-        nodeMap,
-        geojson: data.geojson,
-        coloredGeojson: coloredGeoJSON,
-        components: result.components,
-      });
-
+      for (const node of data.nodes) nodeMap[node.id] = node.centroid;
+      onResult(data.nodes.length, result.num_components, { edges, nodeMap, geojson: data.geojson, coloredGeojson: coloredGeoJSON, components: result.components });
       const topSize = result.component_sizes[0] ?? 0;
       setStatusMsg(
-        `${data.nodes.length.toLocaleString()} waterways · ` +
-        `${result.num_components} component(s) · ` +
-        `largest: ${topSize} node(s)`,
+        data.nodes.length.toLocaleString() + ' waterway sections across ' +
+        result.num_components + ' connected network' + (result.num_components !== 1 ? 's' : '') +
+        ' — largest has ' + topSize.toLocaleString() + ' sections'
       );
       setStatus('done');
     } catch (err) {
@@ -103,64 +78,44 @@ export function WaterwaysSection({ map, onResult }: WaterwaysSectionProps) {
         <CardHeader className="pb-3">
           <CardTitle id="waterways-title" className="text-sm flex items-center gap-2">
             <Waves className="h-4 w-4" />
-            Kerala Waterways
+            Waterway Map
           </CardTitle>
           <CardDescription className="text-xs">
-            Fetch OSM data and build proximity graph
+            Load real waterway data for Kerala from OpenStreetMap
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           {status === 'idle' && (
-            <Button
-              onClick={handleFetch}
-              className="w-full"
-              disabled={!map}
-              aria-label="Fetch Kerala waterways data"
-            >
+            <Button onClick={handleFetch} className="w-full" disabled={!map} aria-label="Load Kerala waterway data">
               <Download className="h-4 w-4 mr-2" />
-              Fetch Kerala Waterways
+              Load Kerala Waterways
             </Button>
           )}
-
           {status === 'loading' && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-sm">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="text-muted-foreground text-xs">{statusMsg}</span>
-              </div>
+            <div className="flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="text-muted-foreground text-xs">{statusMsg}</span>
             </div>
           )}
-
           {status === 'error' && (
             <div className="space-y-2">
-              <div className="bg-destructive/10 text-destructive rounded-md p-3 text-xs">
-                {statusMsg}
-              </div>
-              <Button onClick={handleFetch} variant="outline" className="w-full">
-                Retry
-              </Button>
+              <div className="bg-destructive/10 text-destructive rounded-md p-3 text-xs">{statusMsg}</div>
+              <Button onClick={handleFetch} variant="outline" className="w-full">Try Again</Button>
             </div>
           )}
-
           {status === 'done' && (
             <div className="space-y-2">
               <div className="bg-green-500/10 text-green-400 rounded-md p-3 text-sm flex items-start gap-2">
                 <CheckCircle2 className="h-4 w-4 mt-0.5 flex-shrink-0" />
                 <div className="flex-1">
-                  <p className="font-medium">Data Loaded</p>
+                  <p className="font-medium">Waterways Loaded</p>
                   <div className="flex items-center gap-2 mt-2 flex-wrap">
-                    <Badge variant="secondary" className="text-xs">
-                      {waterwaysCount.toLocaleString()} waterways
-                    </Badge>
-                    <Badge variant="secondary" className="text-xs">
-                      {componentsCount} components
-                    </Badge>
+                    <Badge variant="secondary" className="text-xs">{waterwaysCount.toLocaleString()} sections</Badge>
+                    <Badge variant="secondary" className="text-xs">{componentsCount} network{componentsCount !== 1 ? 's' : ''}</Badge>
                   </div>
                 </div>
               </div>
-              <Button onClick={handleFetch} variant="outline" className="w-full" size="sm">
-                Re-fetch Waterways
-              </Button>
+              <Button onClick={handleFetch} variant="outline" className="w-full" size="sm">Refresh Data</Button>
             </div>
           )}
         </CardContent>

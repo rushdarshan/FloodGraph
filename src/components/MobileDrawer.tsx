@@ -1,5 +1,6 @@
 import type { Map as MLMap } from 'maplibre-gl';
 import type { WaterwayGraphData } from './sidebar/WaterwaysSection';
+import type { LegendType } from './sidebar/ComputeSection';
 import { AOISection } from './sidebar/AOISection';
 import { WaterwaysSection } from './sidebar/WaterwaysSection';
 import { ComputeSection } from './sidebar/ComputeSection';
@@ -26,85 +27,43 @@ interface MobileDrawerProps {
   onClearAoi: () => void;
   onComputeResult: (data: { nodesCount: number; edgesCount: number; componentsCount: number }) => void;
   onWaterwaysResult: (waterways: number, components: number, graphData: WaterwayGraphData) => void;
+  onLegendChange: (type: LegendType) => void;
 }
 
 export function MobileDrawer({
-  open,
-  onOpenChange,
-  map,
-  pyodideStatus,
-  pyodideProgress,
-  pyodideMessage,
-  aoiStatus,
-  aoiVertices,
-  computeResult,
-  waterwayGraph,
-  selectedFloodSource,
-  onStartDrawing,
-  onClearAoi,
-  onComputeResult,
-  onWaterwaysResult,
+  open, onOpenChange, map, pyodideStatus, pyodideProgress, pyodideMessage,
+  aoiStatus, aoiVertices, computeResult, waterwayGraph, selectedFloodSource,
+  onStartDrawing, onClearAoi, onComputeResult, onWaterwaysResult, onLegendChange,
 }: MobileDrawerProps) {
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent className="max-h-[85vh]">
         <DrawerHeader>
-          <DrawerTitle>FloodGraph Controls</DrawerTitle>
+          <DrawerTitle>NeerNet Controls</DrawerTitle>
         </DrawerHeader>
-
         <ScrollArea className="flex-1 px-4">
           <div className="space-y-4 pb-8">
-            <PyodideStatus
-              status={pyodideStatus}
-              progress={pyodideProgress}
-              message={pyodideMessage}
-            />
-
+            <PyodideStatus status={pyodideStatus} progress={pyodideProgress} message={pyodideMessage} />
             <Separator />
-
-            <AOISection
-              status={aoiStatus}
-              vertices={aoiVertices}
-              onStartDrawing={() => {
-                onStartDrawing();
-                onOpenChange(false);
-              }}
-              onClear={onClearAoi}
-            />
-
+            <AOISection status={aoiStatus} vertices={aoiVertices} onStartDrawing={() => { onStartDrawing(); onOpenChange(false); }} onClear={onClearAoi} />
             <Separator />
-
-            <WaterwaysSection
-              map={map}
-              onResult={onWaterwaysResult}
-            />
-
+            <WaterwaysSection map={map} onResult={onWaterwaysResult} />
             <Separator />
-
             <ComputeSection
               map={map}
               pyodideReady={pyodideStatus === 'ready'}
               waterwayGraph={waterwayGraph}
               selectedFloodSource={selectedFloodSource}
-              onResult={(data) => {
-                onComputeResult(data);
-                onOpenChange(false);
-              }}
+              onResult={(data) => { onComputeResult(data); onOpenChange(false); }}
+              onLegendChange={onLegendChange}
             />
-
             <Separator />
-
             {computeResult && (
               <>
-                <ResultsSection
-                  nodesCount={computeResult.nodesCount}
-                  edgesCount={computeResult.edgesCount}
-                  componentsCount={computeResult.componentsCount}
-                />
+                <ResultsSection nodesCount={computeResult.nodesCount} edgesCount={computeResult.edgesCount} componentsCount={computeResult.componentsCount} />
                 <Separator />
               </>
             )}
-
             <OfflinePackSection />
           </div>
         </ScrollArea>

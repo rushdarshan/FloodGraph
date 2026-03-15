@@ -1,5 +1,6 @@
 import type { Map as MLMap } from 'maplibre-gl';
 import type { WaterwayGraphData } from './sidebar/WaterwaysSection';
+import type { LegendType } from './sidebar/ComputeSection';
 import { AOISection } from './sidebar/AOISection';
 import { WaterwaysSection } from './sidebar/WaterwaysSection';
 import { ComputeSection } from './sidebar/ComputeSection';
@@ -23,87 +24,46 @@ interface SidebarProps {
   onClearAoi: () => void;
   onComputeResult: (data: { nodesCount: number; edgesCount: number; componentsCount: number }) => void;
   onWaterwaysResult: (waterways: number, components: number, graphData: WaterwayGraphData) => void;
+  onLegendChange: (type: LegendType) => void;
 }
 
 export function Sidebar({
-  map,
-  pyodideStatus,
-  pyodideProgress,
-  pyodideMessage,
-  aoiStatus,
-  aoiVertices,
-  computeResult,
-  waterwayGraph,
-  selectedFloodSource,
-  onStartDrawing,
-  onClearAoi,
-  onComputeResult,
-  onWaterwaysResult,
+  map, pyodideStatus, pyodideProgress, pyodideMessage,
+  aoiStatus, aoiVertices, computeResult, waterwayGraph,
+  selectedFloodSource, onStartDrawing, onClearAoi,
+  onComputeResult, onWaterwaysResult, onLegendChange,
 }: SidebarProps) {
   return (
-    <aside
-      className="w-80 border-r border-border bg-card shadow-sm flex flex-col h-full"
-      role="complementary"
-      aria-label="Control panel"
-    >
+    <aside className="w-80 border-r border-border bg-card shadow-sm flex flex-col h-full" role="complementary" aria-label="Control panel">
       <ScrollArea className="flex-1 h-0">
         <div className="p-4 space-y-4">
-          <PyodideStatus
-            status={pyodideStatus}
-            progress={pyodideProgress}
-            message={pyodideMessage}
-          />
-
+          <PyodideStatus status={pyodideStatus} progress={pyodideProgress} message={pyodideMessage} />
           <Separator />
-
-          <AOISection
-            status={aoiStatus}
-            vertices={aoiVertices}
-            onStartDrawing={onStartDrawing}
-            onClear={onClearAoi}
-          />
-
+          <AOISection status={aoiStatus} vertices={aoiVertices} onStartDrawing={onStartDrawing} onClear={onClearAoi} />
           <Separator />
-
-          <WaterwaysSection
-            map={map}
-            onResult={onWaterwaysResult}
-          />
-
+          <WaterwaysSection map={map} onResult={onWaterwaysResult} />
           <Separator />
-
           <ComputeSection
             map={map}
             pyodideReady={pyodideStatus === 'ready'}
             waterwayGraph={waterwayGraph}
             selectedFloodSource={selectedFloodSource}
             onResult={onComputeResult}
+            onLegendChange={onLegendChange}
           />
-
           <Separator />
-
           {computeResult && (
             <>
-              <ResultsSection
-                nodesCount={computeResult.nodesCount}
-                edgesCount={computeResult.edgesCount}
-                componentsCount={computeResult.componentsCount}
-              />
+              <ResultsSection nodesCount={computeResult.nodesCount} edgesCount={computeResult.edgesCount} componentsCount={computeResult.componentsCount} />
               <Separator />
             </>
           )}
-
           <OfflinePackSection />
         </div>
       </ScrollArea>
-
       <div className="p-3 border-t border-border bg-muted/30">
-        <p className="text-xs text-muted-foreground text-center">
-          © 2026 Darshan K · MIT License
-        </p>
-        <p className="text-xs text-muted-foreground text-center mt-1">
-          FloodGraph v0.1.0
-        </p>
+        <p className="text-xs text-muted-foreground text-center">© 2026 Darshan K · MIT License</p>
+        <p className="text-xs text-muted-foreground text-center mt-1">NeerNet v0.1.0</p>
       </div>
     </aside>
   );
