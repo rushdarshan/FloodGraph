@@ -5,8 +5,9 @@ import { Button } from '../ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import type { WaterwayGraphData } from './WaterwaysSection';
 import { getPyWorker } from '../../py/client.js';
-import { colorComponentsGeoJSON } from '../../waterways.js';
-import { setFloodNodesLayer, setWaterwaysLayer, clearOverlayLayers } from '../../map.js';
+import type { WatershedStatsResult } from '../../py/client.js';
+import { colorComponentsGeoJSON, riskScoreGeoJSON } from '../../waterways.js';
+import { setFloodNodesLayer, setWaterwaysLayer, setCriticalPathLayer, clearOverlayLayers } from '../../map.js';
 
 interface ComputeSectionProps {
   map: MLMap | null;
@@ -23,6 +24,7 @@ export function ComputeSection({
 }: ComputeSectionProps) {
   const [status, setStatus] = useState<'idle' | 'running' | 'complete' | 'error'>('idle');
   const [statusMsg, setStatusMsg] = useState('');
+  const [watershedStats, setWatershedStats] = useState<WatershedStatsResult | null>(null);
 
   const hasWaterways = waterwayGraph !== null;
   const canRun = pyodideReady && map !== null && hasWaterways;
@@ -31,7 +33,8 @@ export function ComputeSection({
     if (!canRun) return;
 
     setStatus('running');
-    setStatusMsg('Running NetworkX connected_components via Pyodide…');
+    setStatusMsg('Running nx.connected_components via Pyodide…');
+    setWatershedStats(null);
     clearOverlayLayers(map!);
 
     try {
@@ -60,7 +63,8 @@ export function ComputeSection({
 
     const nodeIds = Object.keys(waterwayGraph.nodeMap);
     setStatus('running');
-    setStatusMsg(`Running flood BFS on ${nodeIds.length.toLocaleString()} nodes…`);
+    setStatusMsg(`Running nx BFS toy_flood on ${nodeIds.length.toLocaleString()} nodes…`);
+    setWatershedStats(null);
     clearOverlayLayers(map!);
 
     try {
@@ -82,6 +86,90 @@ export function ComputeSection({
     }
   };
 
+  const handleRiskScore = async () => {
+    if (!canRun) return;
+
+    const nodeIds = Object.keys(waterwayGraph.nodeMap);
+    setStatus('running');
+    setStatusMsg('Running nx.betweenness_centrality + flood proximity via Pyodide…');
+    setWatershedStats(null);
+    clearOverlayLayers(map!);
+
+    try {
+      const sourceNodes = nodeIds.slice(0, 5);
+      const worker = getPyWorker();
+      const result = await worker.riskScore(waterwayGraph.edges, sourceNodes);
+
+      const colored = riskScoreGeoJSON(waterwayGraph.geojson, result.scores, result.max_score);
+      setWaterwaysLayer(map!, colored);
+
+      const highRiskCount = Object.values(result.scores).filter((s) => s > result.max_score * 0.75).length;
+      setStatusMsg(
+        `Risk scored ${Object.keys(result.scores).length.toLocaleString()} nodes · ${highRiskCount.toLocaleString()} high-risk`
+      );
+      setStatus('complete');
+      onResult({
+        nodesCount: nodeIds.length,
+        edgesCount: waterwayGraph.edges.length,
+        componentsCount: 0,
+      });
+    } catch (err) {
+      setStatusMsg(err instanceof Error ? err.message : String(err));
+      setStatus('error');
+    }
+  };
+
+  const handleWatershedStats = async () => {
+    if (!canRun) return;
+
+    setStatus('running');
+    setStatusMsg('Running nx.DiGraph degree analysis via Pyodide…');
+    setWatershedStats(null);
+
+    try {
+      const worker = getPyWorker();
+      const result = await worker.watershedStats(waterwayGraph.edges);
+
+      setWatershedStats(result);
+      setStatusMsg(
+        `${result.node_count.toLocaleString()} nodes · ${result.component_count} components · density ${result.density}`
+      );
+      setStatus('complete');
+    } catch (err) {
+      setStatusMsg(err instanceof Error ? err.message : String(err));
+      setStatus('error');
+    }
+  };
+
+  const handleCriticalPath = async () => {
+    if (!canRun) return;
+
+    setStatus('running');
+    setStatusMsg('Running nx.articulation_points + nx.bridges via Pyodide…');
+    setWatershedStats(null);
+    clearOverlayLayers(map!);
+
+    try {
+      const worker = getPyWorker();
+      const result = await worker.criticalPath(waterwayGraph.edges);
+
+      setCriticalPathLayer(map!, waterwayGraph.nodeMap, result.articulation_points, result.bridges);
+
+      setStatusMsg(
+        `${result.ap_count.toLocaleString()} critical nodes · ${result.bridge_count.toLocaleString()} bridges`
+      );
+      setStatus('complete');
+      onResult({
+        nodesCount: Object.keys(waterwayGraph.nodeMap).length,
+        edgesCount: waterwayGraph.edges.length,
+        componentsCount: result.ap_count,
+      });
+    } catch (err) {
+      setStatusMsg(err instanceof Error ? err.message : String(err));
+      setStatus('error');
+    }
+  };
+
   return (
     <section aria-labelledby="compute-title">
       <Card>
@@ -92,7 +180,7 @@ export function ComputeSection({
           </CardTitle>
           <CardDescription className="text-xs">
             {hasWaterways
-              ? 'Run algorithms on real waterway graph'
+              ? 'Run NetworkX algorithms on real waterway graph'
               : 'Fetch waterways to enable computation'}
           </CardDescription>
         </CardHeader>
@@ -134,6 +222,33 @@ export function ComputeSection({
                 <Play className="h-4 w-4 mr-2" />
                 Run Flood BFS
               </Button>
+              <Button
+                onClick={handleRiskScore}
+                variant="outline"
+                className="w-full"
+                aria-label="Run flood risk scoring"
+              >
+                <Play className="h-4 w-4 mr-2" />
+                Run Risk Score
+              </Button>
+              <Button
+                onClick={handleWatershedStats}
+                variant="outline"
+                className="w-full"
+                aria-label="Compute watershed statistics"
+              >
+                <Play className="h-4 w-4 mr-2" />
+                Watershed Stats
+              </Button>
+              <Button
+                onClick={handleCriticalPath}
+                variant="outline"
+                className="w-full"
+                aria-label="Find critical path nodes and bridges"
+              >
+                <Play className="h-4 w-4 mr-2" />
+                Find Critical Points
+              </Button>
             </div>
           )}
 
@@ -144,6 +259,32 @@ export function ComputeSection({
           {status === 'error' && (
             <div className="bg-destructive/10 text-destructive rounded-md p-3 text-xs">
               {statusMsg}
+            </div>
+          )}
+
+          {watershedStats && status === 'complete' && (
+            <div className="rounded-md border border-border p-3 space-y-1.5 text-xs">
+              <p className="font-semibold text-muted-foreground uppercase tracking-wide text-[10px]">Watershed Statistics</p>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                <span className="text-muted-foreground">Nodes</span>
+                <span className="text-right font-mono">{watershedStats.node_count.toLocaleString()}</span>
+                <span className="text-muted-foreground">Edges</span>
+                <span className="text-right font-mono">{watershedStats.edge_count.toLocaleString()}</span>
+                <span className="text-muted-foreground">Components</span>
+                <span className="text-right font-mono">{watershedStats.component_count}</span>
+                <span className="text-muted-foreground">Largest comp.</span>
+                <span className="text-right font-mono">{watershedStats.largest_component.toLocaleString()}</span>
+                <span className="text-muted-foreground">Outlets</span>
+                <span className="text-right font-mono">{watershedStats.outlet_count.toLocaleString()}</span>
+                <span className="text-muted-foreground">Headwaters</span>
+                <span className="text-right font-mono">{watershedStats.headwater_count.toLocaleString()}</span>
+                <span className="text-muted-foreground">Confluences</span>
+                <span className="text-right font-mono">{watershedStats.confluence_count.toLocaleString()}</span>
+                <span className="text-muted-foreground">Avg degree</span>
+                <span className="text-right font-mono">{watershedStats.avg_degree}</span>
+                <span className="text-muted-foreground">Density</span>
+                <span className="text-right font-mono">{watershedStats.density}</span>
+              </div>
             </div>
           )}
         </CardContent>

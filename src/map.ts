@@ -89,6 +89,10 @@ const FLOOD_NODES_LAYER  = 'flood-nodes-circles';
 const CONNECTIVITY_SOURCE = 'connectivity-components';
 const CONNECTIVITY_LAYER  = 'connectivity-fill';
 
+const CRITICAL_PATH_SOURCE = 'critical-path';
+const CRITICAL_NODES_LAYER = 'critical-nodes';
+const CRITICAL_EDGES_LAYER = 'critical-edges';
+
 /**
  * Add (or update) a GeoJSON layer showing flooded nodes.
  * @param map     MapLibre map instance
@@ -181,6 +185,81 @@ export function setConnectivityLayer(
 }
 
 /**
+ * Add (or update) a layer showing critical waterway infrastructure:
+ * - Articulation points (orange circles — removal disconnects the graph)
+ * - Bridges in the graph sense (orange lines — removal splits a component)
+ *
+ * @param map                MapLibre map instance
+ * @param nodeMap            Record<nodeId, [lon,lat]> position lookup
+ * @param articulationPoints Array of critical node ids
+ * @param bridges            Array of [nodeA, nodeB] bridge edge pairs
+ */
+export function setCriticalPathLayer(
+  map: MLMap,
+  nodeMap: Record<string, [number, number]>,
+  articulationPoints: string[],
+  bridges: Array<[string, string]>,
+): void {
+  const nodeFeatures: GeoJSON.Feature[] = articulationPoints
+    .map((id) => nodeMap[id])
+    .filter(Boolean)
+    .map((coords) => ({
+      type: 'Feature' as const,
+      geometry: { type: 'Point' as const, coordinates: coords },
+      properties: { kind: 'ap' },
+    }));
+
+  const edgeFeatures: GeoJSON.Feature[] = bridges.flatMap(([a, b]) => {
+    const posA = nodeMap[a];
+    const posB = nodeMap[b];
+    if (!posA || !posB) return [] as GeoJSON.Feature[];
+    return [{
+      type: 'Feature' as const,
+      geometry: { type: 'LineString' as const, coordinates: [posA, posB] },
+      properties: { kind: 'bridge' },
+    }] as GeoJSON.Feature[];
+  });
+
+  const geojson: GeoJSON.FeatureCollection = {
+    type: 'FeatureCollection',
+    features: [...edgeFeatures, ...nodeFeatures],
+  };
+
+  if (map.getSource(CRITICAL_PATH_SOURCE)) {
+    (map.getSource(CRITICAL_PATH_SOURCE) as GeoJSONSource).setData(geojson);
+    return;
+  }
+
+  map.addSource(CRITICAL_PATH_SOURCE, { type: 'geojson', data: geojson });
+
+  map.addLayer({
+    id:     CRITICAL_EDGES_LAYER,
+    type:   'line',
+    source: CRITICAL_PATH_SOURCE,
+    filter: ['==', ['get', 'kind'], 'bridge'],
+    paint:  {
+      'line-color':   '#f97316',
+      'line-width':   3,
+      'line-opacity': 0.9,
+    },
+  });
+
+  map.addLayer({
+    id:     CRITICAL_NODES_LAYER,
+    type:   'circle',
+    source: CRITICAL_PATH_SOURCE,
+    filter: ['==', ['get', 'kind'], 'ap'],
+    paint:  {
+      'circle-radius':       7,
+      'circle-color':        '#f97316',
+      'circle-opacity':      0.9,
+      'circle-stroke-width': 2,
+      'circle-stroke-color': '#fff',
+    },
+  });
+}
+
+/**
  * Remove all NeerNet overlay layers from the map.
  */
 export function clearOverlayLayers(map: MLMap): void {
@@ -191,6 +270,10 @@ export function clearOverlayLayers(map: MLMap): void {
     if (map.getLayer(layer))  map.removeLayer(layer);
     if (map.getSource(source)) map.removeSource(source);
   }
+  // Critical path has two layers sharing one source
+  if (map.getLayer(CRITICAL_NODES_LAYER)) map.removeLayer(CRITICAL_NODES_LAYER);
+  if (map.getLayer(CRITICAL_EDGES_LAYER)) map.removeLayer(CRITICAL_EDGES_LAYER);
+  if (map.getSource(CRITICAL_PATH_SOURCE)) map.removeSource(CRITICAL_PATH_SOURCE);
 }
 
 /**

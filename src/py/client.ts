@@ -40,6 +40,31 @@ export interface FloodResult {
   steps_taken:   number;
 }
 
+export interface RiskScoreResult {
+  scores: Record<string, number>;
+  max_score: number;
+  source_count: number;
+}
+
+export interface WatershedStatsResult {
+  node_count: number;
+  edge_count: number;
+  outlet_count: number;
+  headwater_count: number;
+  confluence_count: number;
+  density: number;
+  avg_degree: number;
+  largest_component: number;
+  component_count: number;
+}
+
+export interface CriticalPathResult {
+  articulation_points: string[];
+  bridges: Array<[string, string]>;
+  ap_count: number;
+  bridge_count: number;
+}
+
 export type StatusHandler = (status: StatusResult) => void;
 
 // ─── PyWorkerClient ───────────────────────────────────────────────────────────
@@ -152,6 +177,32 @@ export class PyWorkerClient {
       { edges, source_nodes: sourceNodes, steps },
       180_000,
     );
+  }
+
+  /**
+   * Compute flood risk scores via nx.betweenness_centrality (k=200) +
+   * BFS flood proximity from source nodes.
+   */
+  riskScore(edges: ConnectivityEdge[], sourceNodes: string[]): Promise<RiskScoreResult> {
+    return this._call<RiskScoreResult>(
+      'risk_score',
+      { edges, source_nodes: sourceNodes },
+      300_000,
+    );
+  }
+
+  /**
+   * Compute watershed topology statistics via nx.DiGraph degree analysis.
+   */
+  watershedStats(edges: ConnectivityEdge[]): Promise<WatershedStatsResult> {
+    return this._call<WatershedStatsResult>('watershed_stats', { edges }, 180_000);
+  }
+
+  /**
+   * Find critical graph points via nx.articulation_points + nx.bridges.
+   */
+  criticalPath(edges: ConnectivityEdge[]): Promise<CriticalPathResult> {
+    return this._call<CriticalPathResult>('critical_path', { edges }, 180_000);
   }
 
   /** Terminate the underlying worker. */

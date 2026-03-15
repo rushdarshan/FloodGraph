@@ -166,12 +166,161 @@ _result
   return JSON.parse(result as string) as FloodResult;
 }
 
+// ─── Risk Score ───────────────────────────────────────────────────────────────
+
+interface RiskScoreResult {
+  scores: Record<string, number>;
+  max_score: number;
+  source_count: number;
+}
+
+async function runRiskScore(payload: unknown): Promise<RiskScoreResult> {
+  const { edges, source_nodes } = payload as { edges: ConnectivityEdge[]; source_nodes: string[] };
+
+  pyodide!.globals.set('edges_json',   JSON.stringify(edges));
+  pyodide!.globals.set('sources_json', JSON.stringify(source_nodes));
+
+  const result = await pyodide!.runPythonAsync(`
+import json, networkx as nx
+
+edges_list = json.loads(edges_json)
+G = nx.Graph()
+G.add_edges_from((e['source'], e['target']) for e in edges_list)
+
+n = G.number_of_nodes()
+k = min(200, n)
+
+# Approximate betweenness centrality (sampled for performance)
+bc = nx.betweenness_centrality(G, k=k, normalized=True)
+
+# BFS flood proximity from source nodes
+source_nodes = json.loads(sources_json)
+valid_sources = [s for s in source_nodes if G.has_node(s)]
+dist_scores = {}
+if valid_sources:
+    for src in valid_sources:
+        lengths = nx.single_source_shortest_path_length(G, src, cutoff=20)
+        for node, d in lengths.items():
+            flood_prox = max(0.0, 1.0 - d / 20.0)
+            dist_scores[node] = max(dist_scores.get(node, 0.0), flood_prox)
+
+# Combined risk: 50% betweenness + 50% flood proximity
+scores = {}
+for node in G.nodes():
+    scores[node] = 0.5 * bc.get(node, 0.0) + 0.5 * dist_scores.get(node, 0.0)
+
+max_score = max(scores.values()) if scores else 1.0
+
+_result = json.dumps({
+    "scores": scores,
+    "max_score": max_score,
+    "source_count": len(valid_sources)
+})
+del edges_json, sources_json
+_result
+  `);
+
+  return JSON.parse(result as string) as RiskScoreResult;
+}
+
+// ─── Watershed Stats ──────────────────────────────────────────────────────────
+
+interface WatershedStatsResult {
+  node_count: number;
+  edge_count: number;
+  outlet_count: number;
+  headwater_count: number;
+  confluence_count: number;
+  density: number;
+  avg_degree: number;
+  largest_component: number;
+  component_count: number;
+}
+
+async function runWatershedStats(payload: unknown): Promise<WatershedStatsResult> {
+  const { edges } = payload as { edges: ConnectivityEdge[] };
+
+  pyodide!.globals.set('edges_json', JSON.stringify(edges));
+
+  const result = await pyodide!.runPythonAsync(`
+import json, networkx as nx
+
+edges_list = json.loads(edges_json)
+G = nx.Graph()
+G.add_edges_from((e['source'], e['target']) for e in edges_list)
+DG = nx.DiGraph()
+DG.add_edges_from((e['source'], e['target']) for e in edges_list)
+
+n = G.number_of_nodes()
+m = G.number_of_edges()
+
+outlet_count     = sum(1 for _, d in DG.in_degree()  if d == 0)
+headwater_count  = sum(1 for _, d in DG.out_degree() if d == 0)
+confluence_count = sum(1 for _, d in DG.in_degree()  if d >= 2)
+comps = list(nx.connected_components(G))
+largest = max((len(c) for c in comps), default=0)
+
+_result = json.dumps({
+    "node_count":        n,
+    "edge_count":        m,
+    "outlet_count":      outlet_count,
+    "headwater_count":   headwater_count,
+    "confluence_count":  confluence_count,
+    "density":           round(nx.density(G), 6),
+    "avg_degree":        round(sum(d for _, d in G.degree()) / n if n > 0 else 0, 2),
+    "largest_component": largest,
+    "component_count":   len(comps)
+})
+del edges_json
+_result
+  `);
+
+  return JSON.parse(result as string) as WatershedStatsResult;
+}
+
+// ─── Critical Path ────────────────────────────────────────────────────────────
+
+interface CriticalPathResult {
+  articulation_points: string[];
+  bridges: Array<[string, string]>;
+  ap_count: number;
+  bridge_count: number;
+}
+
+async function runCriticalPath(payload: unknown): Promise<CriticalPathResult> {
+  const { edges } = payload as { edges: ConnectivityEdge[] };
+
+  pyodide!.globals.set('edges_json', JSON.stringify(edges));
+
+  const result = await pyodide!.runPythonAsync(`
+import json, networkx as nx
+
+edges_list = json.loads(edges_json)
+G = nx.Graph()
+G.add_edges_from((e['source'], e['target']) for e in edges_list)
+
+aps = list(nx.articulation_points(G))
+brs = list(nx.bridges(G))
+
+_result = json.dumps({
+    "articulation_points": aps,
+    "bridges": [list(b) for b in brs],
+    "ap_count": len(aps),
+    "bridge_count": len(brs)
+})
+del edges_json
+_result
+  `);
+
+  return JSON.parse(result as string) as CriticalPathResult;
+}
+
 // ─── Message dispatcher ───────────────────────────────────────────────────────
 
 self.onmessage = async (event: MessageEvent) => {
   const { id, type, payload } = event.data as {
     id: string;
-    type: 'ping' | 'connectivity' | 'toy_flood';
+    type: 'ping' | 'connectivity' | 'toy_flood' | 'risk_score' | 'watershed_stats' | 'critical_path';
     payload: unknown;
   };
 
@@ -192,6 +341,15 @@ self.onmessage = async (event: MessageEvent) => {
         break;
       case 'toy_flood':
         result = await runToyFlood(payload);
+        break;
+      case 'risk_score':
+        result = await runRiskScore(payload);
+        break;
+      case 'watershed_stats':
+        result = await runWatershedStats(payload);
+        break;
+      case 'critical_path':
+        result = await runCriticalPath(payload);
         break;
       default: {
         const exhaustive: never = type;

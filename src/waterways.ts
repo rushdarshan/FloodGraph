@@ -307,3 +307,40 @@ export function colorComponentsGeoJSON(
 
   return { type: 'FeatureCollection', features };
 }
+
+// ─── Risk score colouring ─────────────────────────────────────────────────────
+
+/**
+ * Return a new FeatureCollection with `_color` stamped red (high risk) →
+ * green (low risk) based on normalised risk scores.
+ *
+ * @param geojson   Original uncolored WaterwayData.geojson
+ * @param scores    Record<nodeId, score> from the risk_score worker
+ * @param maxScore  Maximum score value (for normalization)
+ */
+export function riskScoreGeoJSON(
+  geojson: GeoJSON.FeatureCollection,
+  scores: Record<string, number>,
+  maxScore: number,
+): GeoJSON.FeatureCollection {
+  const features = geojson.features.map((f) => {
+    const id    = f.properties?.['id'] as string | undefined;
+    const score = id !== undefined ? (scores[id] ?? 0) : 0;
+    const t     = maxScore > 0 ? Math.min(score / maxScore, 1) : 0;
+    const color = _riskColor(t);
+    return {
+      ...f,
+      properties: { ...f.properties, _color: color, _risk: score },
+    };
+  });
+  return { type: 'FeatureCollection', features };
+}
+
+/** Red (t=1, high risk) → yellow → green (t=0, low risk) */
+function _riskColor(t: number): string {
+  // green #22c55e → red #ef4444
+  const r = Math.round(34  + (239 - 34)  * t);
+  const g = Math.round(197 + (68  - 197) * t);
+  const b = Math.round(94  + (68  - 94)  * t);
+  return `rgb(${r},${g},${b})`;
+}
