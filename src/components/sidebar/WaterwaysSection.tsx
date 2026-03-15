@@ -11,6 +11,10 @@ import { getPyWorker, type ConnectivityEdge } from '../../py/client.js';
 export interface WaterwayGraphData {
   edges: ConnectivityEdge[];
   nodeMap: Record<string, [number, number]>;
+  /** Waterway GeoJSON already coloured by connected component */
+  coloredGeojson: GeoJSON.FeatureCollection;
+  /** Raw component arrays from the connectivity worker */
+  components: string[][];
 }
 
 interface WaterwaysSectionProps {
@@ -68,7 +72,12 @@ export function WaterwaysSection({ map, onResult }: WaterwaysSectionProps) {
       for (const node of data.nodes) {
         nodeMap[node.id] = node.centroid;
       }
-      onResult(data.nodes.length, result.num_components, { edges, nodeMap });
+      onResult(data.nodes.length, result.num_components, {
+        edges,
+        nodeMap,
+        coloredGeojson: coloredGeoJSON,
+        components: result.components,
+      });
 
       const topSize = result.component_sizes[0] ?? 0;
       setStatusMsg(

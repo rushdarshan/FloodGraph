@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui
 import type { WaterwayGraphData } from './WaterwaysSection';
 import { AoiDraw, syntheticNodes, syntheticEdges } from '../../aoi.js';
 import { getPyWorker, type ConnectivityEdge } from '../../py/client.js';
-import { setConnectivityLayer, setFloodNodesLayer, clearOverlayLayers } from '../../map.js';
+import { setConnectivityLayer, setFloodNodesLayer, setWaterwaysLayer, clearOverlayLayers } from '../../map.js';
 
 interface ComputeSectionProps {
   map: MLMap | null;
@@ -30,15 +30,13 @@ export function ComputeSection({
 
   // Can run with waterway data OR with AOI-based synthetic data
   const hasWaterways = waterwayGraph !== null;
-  const canRun = pyodideReady && map !== null && (hasWaterways || (aoiComplete && aoi !== null));
+  // Connectivity on real waterways: just re-renders the colored lines — no Python needed
+  const canRunConnectivity = map !== null && (hasWaterways || (pyodideReady && aoiComplete && aoi !== null));
+  // Flood BFS always needs Python (runs new simulation)
+  const canRunFlood = pyodideReady && map !== null && (hasWaterways || (aoiComplete && aoi !== null));
 
-  /** Resolve edges + positions from real waterway data or synthetic AOI grid */
-  function getGraphData(): { edges: ConnectivityEdge[]; positions: Record<string, [number, number]>; nodeIds: string[] } | null {
-    if (hasWaterways) {
-      const nodeIds = Object.keys(waterwayGraph.nodeMap);
-      return { edges: waterwayGraph.edges, positions: waterwayGraph.nodeMap, nodeIds };
-    }
-    // Fallback: synthetic AOI grid
+  /** Synthetic AOI grid — only used as fallback when no waterways loaded */
+  function getSyntheticData(): { edges: ConnectivityEdge[]; positions: Record<string, [number, number]>; nodeIds: string[] } | null {
     const polygon = aoi?.getPolygon();
     if (!polygon) return null;
     const { nodes, positions } = syntheticNodes(polygon);
@@ -48,20 +46,35 @@ export function ComputeSection({
   }
 
   const handleConnectivity = async () => {
-    if (!canRun) return;
-    const data = getGraphData();
-    if (!data) return;
+    if (!canRunConnectivity) return;
 
     setStatus('running');
-    setStatusMsg(`Running connectivity on ${data.nodeIds.length.toLocaleString()} nodes…`);
     clearOverlayLayers(map!);
+
+    // When real waterway data is available: skip redundant Python re-run.
+    // WaterwaysSection already ran connectivity — reuse its colored GeoJSON.
+    if (hasWaterways) {
+      setWaterwaysLayer(map!, waterwayGraph.coloredGeojson);
+      const nodeCount = Object.keys(waterwayGraph.nodeMap).length;
+      setStatusMsg(`${waterwayGraph.components.length} component(s) found`);
+      setStatus('complete');
+      onResult({
+        nodesCount: nodeCount,
+        edgesCount: waterwayGraph.edges.length,
+        componentsCount: waterwayGraph.components.length,
+      });
+      return;
+    }
+
+    // Fallback: synthetic AOI graph
+    const data = getSyntheticData();
+    if (!data) { setStatus('idle'); return; }
+    setStatusMsg(`Running connectivity on ${data.nodeIds.length} nodes…`);
 
     try {
       const worker = getPyWorker();
       const result = await worker.connectivity(data.edges);
-
       setConnectivityLayer(map!, data.positions, result.components);
-
       setStatusMsg(`${result.num_components} component(s) found`);
       setStatus('complete');
       onResult({
@@ -76,22 +89,28 @@ export function ComputeSection({
   };
 
   const handleFloodBFS = async () => {
-    if (!canRun) return;
-    const data = getGraphData();
-    if (!data) return;
+    if (!canRunFlood) return;
+
+    // Resolve edges + positions: real waterways take priority over synthetic
+    const edges = hasWaterways ? waterwayGraph.edges : getSyntheticData()?.edges;
+    const positions = hasWaterways ? waterwayGraph.nodeMap : getSyntheticData()?.positions;
+    const nodeIds = hasWaterways
+      ? Object.keys(waterwayGraph.nodeMap)
+      : (getSyntheticData()?.nodeIds ?? []);
+
+    if (!edges || !positions) return;
 
     setStatus('running');
-    setStatusMsg(`Running flood BFS on ${data.nodeIds.length.toLocaleString()} nodes…`);
+    setStatusMsg(`Running flood BFS on ${nodeIds.length.toLocaleString()} nodes…`);
     clearOverlayLayers(map!);
 
     try {
-      const sourceNodes = data.nodeIds.slice(0, 3);
-
+      const sourceNodes = nodeIds.slice(0, 3);
       const worker = getPyWorker();
-      const result = await worker.toyFlood(data.edges, sourceNodes, 4);
+      const result = await worker.toyFlood(edges, sourceNodes, 4);
 
       const floodCoords = result.flooded_nodes
-        .map((id) => data.positions[id])
+        .map((id) => positions[id])
         .filter(Boolean) as [number, number][];
 
       setFloodNodesLayer(map!, floodCoords);
@@ -119,7 +138,7 @@ export function ComputeSection({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {!canRun && (
+          {!canRunConnectivity && !canRunFlood && (
             <div className="bg-muted rounded-md p-3 text-sm flex items-start gap-2 text-muted-foreground">
               <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
               <div className="text-xs">
@@ -138,25 +157,29 @@ export function ComputeSection({
             </div>
           )}
 
-          {canRun && status !== 'running' && (
+          {(canRunConnectivity || canRunFlood) && status !== 'running' && (
             <div className="space-y-2">
-              <Button
-                onClick={handleConnectivity}
-                className="w-full"
-                aria-label="Run connectivity analysis"
-              >
-                <Play className="h-4 w-4 mr-2" />
-                Run Connectivity
-              </Button>
-              <Button
-                onClick={handleFloodBFS}
-                variant="outline"
-                className="w-full"
-                aria-label="Run flood BFS simulation"
-              >
-                <Play className="h-4 w-4 mr-2" />
-                Run Flood BFS
-              </Button>
+              {canRunConnectivity && (
+                <Button
+                  onClick={handleConnectivity}
+                  className="w-full"
+                  aria-label="Run connectivity analysis"
+                >
+                  <Play className="h-4 w-4 mr-2" />
+                  Run Connectivity
+                </Button>
+              )}
+              {canRunFlood && (
+                <Button
+                  onClick={handleFloodBFS}
+                  variant="outline"
+                  className="w-full"
+                  aria-label="Run flood BFS simulation"
+                >
+                  <Play className="h-4 w-4 mr-2" />
+                  Run Flood BFS
+                </Button>
+              )}
             </div>
           )}
 
