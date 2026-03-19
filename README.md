@@ -1,7 +1,7 @@
 # NeerNet – FloodGraph
 
-> **Serverless Geospatial Disaster Simulator**
-> Offline-capable PWA · MapLibre GL JS · PMTiles · Pyodide (NetworkX in-browser) · Vanilla TypeScript
+> **Offline Flood Connectivity Mapper for Disaster Response**
+> React + TypeScript · MapLibre GL JS · PMTiles · Pyodide (NetworkX in-browser) · Tailwind CSS + shadcn/ui
 
 Copyright © 2026 Darshan K. · [MIT License](./LICENSE)
 
@@ -10,7 +10,15 @@ Copyright © 2026 Darshan K. · [MIT License](./LICENSE)
 ## Overview
 
 **NeerNet** is a progressive web app that runs entirely in the browser — no backend required.
-It renders a vector basemap using **MapLibre GL JS** + **PMTiles**, lets you draw an **AOI polygon**, and executes **Python graph algorithms** (NetworkX, NumPy) client-side inside a **Web Worker via Pyodide**.
+It renders a vector basemap using **MapLibre GL JS** + **PMTiles**, lets you draw an **AOI polygon**, and executes **Python graph algorithms** client-side inside a **Web Worker via Pyodide/WebAssembly**.
+
+Current capabilities:
+
+- Fetches **1,68,060+ Kerala waterways** from OpenStreetMap via Overpass API
+- Runs **NetworkX connected_components**, **BFS flood simulation**, **watershed stats**, **critical path detection**, and **risk scoring** entirely in the browser
+- Animated flood BFS with step-by-step visualization
+- Click-to-set flood source on the map
+- Export results as GeoJSON
 
 Two offline modes are included:
 
@@ -18,6 +26,16 @@ Two offline modes are included:
 |------|-------------|
 | **Cache-as-you-pan** | The Service Worker intercepts every tile/style/glyph fetch and stores it in Cache Storage. When you go offline, previously viewed areas load without errors. |
 | **Download Region Pack** | Explicitly download a self-contained pack (one `.pmtiles` file + style + sprites) via the sidebar. Works without any prior panning. |
+
+---
+
+## FOSS Hack 2026
+
+This project was built for FOSS Hack 2026. It uses two Partner Projects:
+- **Pyodide** — Python/NetworkX runs entirely in the browser via WebAssembly
+- **MapLibre GL JS** — Vector tile rendering with OpenStreetMap data
+
+Related contribution: [PR #6133](https://github.com/pyodide/pyodide/pull/6133) — fixing console-v2 multiline paste and autocomplete bugs in Pyodide (approved by core maintainer).
 
 ---
 
@@ -146,6 +164,27 @@ When MapLibre requests tiles from the same URL offline, the Service Worker serve
 the cached full file and synthesises a 206 Partial Content response from the
 requested byte range.
 
+### Offline demo mode (safe for hack demo)
+
+NeerNet currently demos offline behavior using **cache-as-you-pan** only.
+
+1. Ensure download-pack mode is disabled:
+
+```bash
+# .env.local
+VITE_ENABLE_OFFLINE_PACKS=false
+```
+
+2. Start the app and keep DevTools open.
+3. While online, pan and zoom the map in your target demo area for 30-60 seconds.
+4. In DevTools -> Network, enable **Offline**.
+5. Reload the page.
+6. Verify previously visited areas still render from Service Worker cache.
+
+When `VITE_ENABLE_OFFLINE_PACKS=false`, the UI shows an **Offline Demo Mode** panel instead of any download/apply pack controls.
+
+Download-pack mode should only be re-enabled after a real PMTiles/style/glyph dataset is hosted and validated.
+
 ---
 
 ## Pyodide Graph Algorithms
@@ -154,44 +193,12 @@ Python runs in a **Web Worker** (`src/py/worker.ts`) so it never blocks the UI t
 
 ### Jobs
 
-#### `connectivity(edges)`
-
-Input:
-```json
-{ "edges": [{ "source": "A", "target": "B" }, …] }
-```
-
-Output:
-```json
-{
-  "num_components": 3,
-  "component_sizes": [10, 4, 1],
-  "components": [["A", "B", …], […], […]]
-}
-```
-
-Uses `networkx.connected_components` on an undirected graph.
-
-#### `toy_flood(edges, source_nodes, steps)`
-
-Input:
-```json
-{
-  "edges": [{ "source": "A", "target": "B" }, …],
-  "source_nodes": ["A", "C"],
-  "steps": 5
-}
-```
-
-Output:
-```json
-{
-  "flooded_nodes": ["A", "B", "C", "D", …],
-  "steps_taken": 4
-}
-```
-
-Simple BFS flood propagation from source nodes.
+- `connectivity(edges)` — NetworkX `connected_components`
+- `toy_flood(edges, source_nodes, steps)` — BFS flood simulation
+- `animated_flood(edges, source, steps)` — returns per-step frames for animation
+- `risk_score(edges, source_nodes)` — betweenness centrality + flood distance
+- `watershed_stats(edges)` — outlets, headwaters, density, confluence
+- `critical_path(edges)` — bridges and articulation points
 
 ### Message protocol
 
@@ -209,9 +216,9 @@ All messages follow:
 { id: '__status__'; ok: true; result: { status: 'loading'|'ready'; message: string } }
 ```
 
-### Extending with real flood / waterbody connectivity
+### Extending flood / waterbody connectivity
 
-Replace the synthetic grid in `src/main.ts` with real graph data:
+Use the existing OSM ingestion pipeline as the base for deeper flood physics:
 
 1. **Fetch OSM road/river network** using Overpass API or a pre-built GeoJSON.
 2. Convert features to `{ source: string; target: string }[]` edge list.
@@ -229,26 +236,34 @@ Replace the synthetic grid in `src/main.ts` with real graph data:
 
 ```
 FloodGraph/
-├── LICENSE
-├── README.md
-├── package.json
-├── tsconfig.json
-├── vite.config.ts
-├── index.html                    # App shell
-├── public/
-│   ├── sw.js                     # Service worker
-│   ├── manifest.json             # PWA manifest
-│   ├── offline-packs.json        # Pack index
-│   ├── icon-192.png              # PWA icon (provide your own)
-│   └── icon-512.png              # PWA icon (provide your own)
-└── src/
-    ├── main.ts                   # App entry + UI wiring
-    ├── map.ts                    # MapLibre init + PMTiles protocol + overlay layers
-    ├── aoi.ts                    # AOI polygon draw tool
-    └── py/
-        ├── worker.ts             # Pyodide Web Worker (Python algorithms)
-        └── client.ts             # Typed Promise-based worker client
+├── src/
+│   ├── App.tsx                   # Central state management
+│   ├── main.tsx                  # React entry point
+│   ├── map.ts                    # MapLibre + PMTiles
+│   ├── aoi.ts                    # AOI polygon draw
+│   ├── waterways.ts              # Overpass API + graph building
+│   ├── components/
+│   │   ├── Header.tsx
+│   │   ├── MapView.tsx
+│   │   ├── Sidebar.tsx
+│   │   ├── MobileDrawer.tsx
+│   │   └── sidebar/
+│   │       ├── PyodideStatus.tsx
+│   │       ├── AOISection.tsx
+│   │       ├── WaterwaysSection.tsx
+│   │       ├── ComputeSection.tsx
+│   │       ├── ResultsSection.tsx
+│   │       └── OfflinePackSection.tsx
+│   ├── styles/
+│   └── py/
+│       ├── worker.ts             # Pyodide Web Worker
+│       └── client.ts             # Worker client
 ```
+
+---
+
+## Live Demo
+https://rushdarshan.github.io/FloodGraph/
 
 ---
 
@@ -317,10 +332,13 @@ in `index.html`.
 
 ## Roadmap
 
-- [ ] Real OSM graph ingestion via Overpass API
-- [ ] D8 / flow-accumulation flood simulation in Python
-- [ ] Export flooded-area GeoJSON / CSV
-- [ ] Multi-region pack management (delete, update)
+- [x] Real OSM graph ingestion via Overpass API
+- [x] Animated flood BFS visualization
+- [x] Click-to-set flood source
+- [x] Export results as GeoJSON
+- [x] NetworkX graph algorithms in browser via Pyodide
+- [ ] D8 / flow-accumulation physics-based flood simulation
+- [ ] Multi-region pack management
 - [ ] Offline Pyodide (bundle wheel files in the pack)
 
 ---

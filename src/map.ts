@@ -290,16 +290,25 @@ export function clearOverlayLayers(map: MLMap): void {
 
 // ─── Flood source marker (pulsing, persists across computations) ─────────────
 
-let _pulseTimer: ReturnType<typeof setInterval> | null = null;
+/**
+ * WeakMap to track pulse timers per map instance.
+ * Automatically cleaned up when map is garbage collected.
+ * Replaces the previous global _pulseTimer to prevent resource leaks.
+ */
+const _pulseTimers = new WeakMap<MLMap, ReturnType<typeof setInterval>>();
 
-function _stopPulse(): void {
-  if (_pulseTimer !== null) { clearInterval(_pulseTimer); _pulseTimer = null; }
+function _stopPulse(map: MLMap): void {
+  const timer = _pulseTimers.get(map);
+  if (timer !== undefined) {
+    clearInterval(timer);
+    _pulseTimers.delete(map);
+  }
 }
 
 function _startPulse(map: MLMap): void {
-  _stopPulse();
+  _stopPulse(map);
   let t = 0;
-  _pulseTimer = setInterval(() => {
+  const timer = setInterval(() => {
     t += 0.12;
     const radius  = 16 + 8 * Math.abs(Math.sin(t));
     const opacity = 0.15 + 0.25 * (1 - Math.abs(Math.sin(t)));
@@ -308,10 +317,11 @@ function _startPulse(map: MLMap): void {
         map.setPaintProperty(FLOOD_SOURCE_RING_LAYER, 'circle-radius',  radius);
         map.setPaintProperty(FLOOD_SOURCE_RING_LAYER, 'circle-opacity', opacity);
       } else {
-        _stopPulse();
+        _stopPulse(map);
       }
-    } catch { _stopPulse(); }
+    } catch { _stopPulse(map); }
   }, 50);
+  _pulseTimers.set(map, timer);
 }
 
 /**
@@ -358,7 +368,7 @@ export function setFloodSourceLayer(map: MLMap, coords: [number, number]): void 
 
 /** Remove the flood source marker and stop the pulse animation. */
 export function clearFloodSourceLayer(map: MLMap): void {
-  _stopPulse();
+  _stopPulse(map);
   if (map.getLayer(FLOOD_SOURCE_DOT_LAYER))  map.removeLayer(FLOOD_SOURCE_DOT_LAYER);
   if (map.getLayer(FLOOD_SOURCE_RING_LAYER)) map.removeLayer(FLOOD_SOURCE_RING_LAYER);
   if (map.getSource(FLOOD_SOURCE_SOURCE))    map.removeSource(FLOOD_SOURCE_SOURCE);

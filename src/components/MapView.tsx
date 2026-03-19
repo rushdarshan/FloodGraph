@@ -19,11 +19,16 @@ export function MapView({ aoiStatus, aoiVertices, onMapReady, activeLegend }: Ma
 
   useEffect(() => {
     if (!mapContainerRef.current) return;
-    createMap({
+    const mapInstance = createMap({
       container: mapContainerRef.current,
       onLoaded: (map) => { setMapLoaded(true); onMapReady(map); },
       onError: (err) => { console.error('[map] error', err); },
     });
+
+    return () => {
+      mapInstance.remove();
+      setMapLoaded(false);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -35,8 +40,8 @@ export function MapView({ aoiStatus, aoiVertices, onMapReady, activeLegend }: Ma
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10">
           <Badge className="gap-2 text-sm px-4 py-2 shadow-lg">
             <MousePointer2 className="h-4 w-4 animate-pulse" />
-            Click to add corners · Double-click to finish
-            {aoiVertices > 0 && ` (${aoiVertices} added)`}
+            Click to place boundary points · Double-click to finish
+            {aoiVertices > 0 && ` (${aoiVertices} placed)`}
           </Badge>
         </div>
       )}
@@ -45,16 +50,16 @@ export function MapView({ aoiStatus, aoiVertices, onMapReady, activeLegend }: Ma
         <div className="absolute inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-20">
           <div className="text-center space-y-3">
             <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
-            <p className="text-sm text-muted-foreground">Loading map…</p>
+            <p className="text-sm text-muted-foreground">Loading basemap and tiles…</p>
           </div>
         </div>
       )}
 
       {mapLoaded && aoiStatus === 'idle' && (
         <div className="absolute bottom-20 left-4 z-10">
-          <Badge variant="secondary" className="gap-2 text-xs px-3 py-1.5">
+          <Badge variant="secondary" className="gap-2 text-sm px-3 py-1.5">
             <Hand className="h-3 w-3" />
-            Pan &amp; zoom the map
+            Pan and zoom the map
           </Badge>
         </div>
       )}

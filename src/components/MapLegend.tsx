@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { LegendType } from './sidebar/ComputeSection';
 
 interface MapLegendProps {
@@ -5,19 +6,32 @@ interface MapLegendProps {
 }
 
 const base =
-  'absolute bottom-24 right-4 z-10 bg-background/90 backdrop-blur-sm rounded-lg px-3 py-2.5 border border-border shadow-md text-xs max-w-[180px]';
+  'absolute bottom-20 right-3 md:bottom-24 md:right-4 z-10 bg-background/90 backdrop-blur-sm rounded-lg px-3 py-2.5 border border-border shadow-md text-sm w-[min(200px,calc(100vw-1.5rem))]';
 
-export function MapLegend({ legend }: MapLegendProps) {
+// Color-blind-safe network connectivity palette (Viridis-inspired)
+const networkColors = [
+  { name: '1', color: 'var(--connectivity-1)' },
+  { name: '2', color: 'var(--connectivity-2)' },
+  { name: '3', color: 'var(--connectivity-3)' },
+  { name: '4', color: 'var(--connectivity-4)' },
+  { name: '5', color: 'var(--connectivity-5)' },
+  { name: '6', color: 'var(--connectivity-6)' },
+];
+
+function MapLegendComponent({ legend }: MapLegendProps) {
   if (legend === 'connectivity') {
     return (
       <div className={base}>
-        <p className="font-semibold mb-2 text-foreground">Connected Networks</p>
-        <div className="flex items-center gap-1 flex-wrap">
-          {['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'].map((c) => (
-            <div key={c} className="w-4 h-4 rounded-sm flex-shrink-0" style={{ background: c }} />
+        <p className="font-semibold mb-2 text-foreground">Connected Waterway Networks</p>
+        <div className="grid grid-cols-2 gap-2">
+          {networkColors.map(({ name, color }) => (
+            <div key={name} className="flex items-center gap-2">
+              <div className="w-5 h-5 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
+              <span className="text-xs text-muted-foreground break-words">Network {name}</span>
+            </div>
           ))}
         </div>
-        <p className="text-muted-foreground mt-1.5 text-[10px]">Each colour = one drainage network</p>
+        <p className="text-muted-foreground mt-2 text-sm break-words">Each network is a separate drainage system.</p>
       </div>
     );
   }
@@ -25,15 +39,26 @@ export function MapLegend({ legend }: MapLegendProps) {
   if (legend === 'risk') {
     return (
       <div className={base}>
-        <p className="font-semibold mb-2">Flood Risk</p>
-        <div
-          className="w-full h-3 rounded-sm"
-          style={{ background: 'linear-gradient(to right, rgb(34,197,94), rgb(239,68,68))' }}
-        />
-        <div className="flex justify-between mt-1 text-[10px] text-muted-foreground">
-          <span>Low risk</span>
-          <span>High risk</span>
+        <p className="font-semibold mb-2 text-foreground">Flood Risk Assessment</p>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <div className="w-5 h-5 rounded-sm flex-shrink-0" style={{ backgroundColor: 'var(--risk-low)' }} />
+            <span className="text-sm text-muted-foreground break-words">Low risk</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-5 h-5 rounded-sm flex-shrink-0" style={{ backgroundColor: 'var(--risk-medium)' }} />
+            <span className="text-sm text-muted-foreground break-words">Medium risk</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-5 h-5 rounded-sm flex-shrink-0" style={{ backgroundColor: 'var(--risk-high)' }} />
+            <span className="text-sm text-muted-foreground break-words">High risk</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-5 h-5 rounded-sm flex-shrink-0" style={{ backgroundColor: 'var(--risk-critical)' }} />
+            <span className="text-sm text-muted-foreground break-words">Critical risk</span>
+          </div>
         </div>
+        <p className="text-muted-foreground mt-2 text-sm break-words">Shows how likely each section is to flood from the selected source.</p>
       </div>
     );
   }
@@ -41,18 +66,18 @@ export function MapLegend({ legend }: MapLegendProps) {
   if (legend === 'critical') {
     return (
       <div className={base}>
-        <p className="font-semibold mb-2">Vulnerable Infrastructure</p>
-        <div className="space-y-1.5">
+        <p className="font-semibold mb-2 text-foreground">Vulnerable Infrastructure</p>
+        <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded-full bg-orange-500 flex-shrink-0" />
-            <span className="text-muted-foreground text-[10px]">Critical junction</span>
+            <div className="w-5 h-5 rounded-full flex-shrink-0" style={{ backgroundColor: 'var(--risk-high)' }} />
+            <span className="text-sm text-muted-foreground break-words">Critical junction</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-1 bg-orange-500 rounded flex-shrink-0" />
-            <span className="text-muted-foreground text-[10px]">Critical channel</span>
+            <div className="w-4 h-1 rounded flex-shrink-0" style={{ backgroundColor: 'var(--risk-high)' }} />
+            <span className="text-sm text-muted-foreground break-words">Critical channel</span>
           </div>
         </div>
-        <p className="text-muted-foreground mt-2 text-[10px]">Orange = removal disconnects water flow</p>
+        <p className="text-muted-foreground mt-2 text-sm break-words">If blocked, these can disrupt downstream water flow.</p>
       </div>
     );
   }
@@ -60,20 +85,23 @@ export function MapLegend({ legend }: MapLegendProps) {
   if (legend === 'flood' || legend === 'animated') {
     return (
       <div className={base}>
-        <p className="font-semibold mb-2">Flood Spread</p>
-        <div className="space-y-1.5">
+        <p className="font-semibold mb-2 text-foreground">Flood Propagation</p>
+        <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded-full bg-red-500 flex-shrink-0" />
-            <span className="text-muted-foreground text-[10px]">Active flood front</span>
+            <div className="w-5 h-5 rounded-full flex-shrink-0" style={{ backgroundColor: 'var(--risk-critical)' }} />
+            <span className="text-sm text-muted-foreground break-words">Active flood front</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded-full bg-red-900/80 flex-shrink-0" />
-            <span className="text-muted-foreground text-[10px]">Already flooded</span>
+            <div className="w-5 h-5 rounded-full flex-shrink-0" style={{ backgroundColor: 'var(--risk-high)' }} />
+            <span className="text-sm text-muted-foreground break-words">Already flooded</span>
           </div>
         </div>
+        <p className="text-muted-foreground mt-2 text-sm break-words">Use this legend while stepping through the flood animation.</p>
       </div>
     );
   }
 
   return null;
 }
+
+export const MapLegend = memo(MapLegendComponent);

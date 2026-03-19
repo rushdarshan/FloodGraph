@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
-import type { Map as MLMap } from 'maplibre-gl';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import type { Map as MLMap, MapMouseEvent } from 'maplibre-gl';
 import { MapView } from './components/MapView';
 import { Sidebar } from './components/Sidebar';
 import { MobileDrawer } from './components/MobileDrawer';
@@ -11,6 +11,13 @@ import { clearOverlayLayers, setFloodSourceLayer, clearFloodSourceLayer } from '
 import { getPyWorker } from './py/client.js';
 import type { WaterwayGraphData } from './components/sidebar/WaterwaysSection';
 import type { LegendType } from './components/sidebar/ComputeSection';
+import {
+  ENABLE_OFFLINE_PACK_DOWNLOADS,
+  OFFLINE_PACK_SELECTED_KEY,
+  applyOfflinePack,
+  checkPackReadiness,
+  loadOfflinePackIndex,
+} from './offlinePacks.js';
 
 function registerServiceWorker(): void {
   if (!('serviceWorker' in navigator)) return;
@@ -49,9 +56,12 @@ export default function App() {
   const [waterwayGraph, setWaterwayGraph] = useState<WaterwayGraphData | null>(null);
   const [selectedFloodSource, setSelectedFloodSource] = useState<string | null>(null);
   const [activeLegend, setActiveLegend] = useState<LegendType>(null);
+  const [offlinePackNotice, setOfflinePackNotice] = useState<string | null>(null);
 
   const waterwayGraphRef = useRef<WaterwayGraphData | null>(null);
   const aoiStatusRef     = useRef<'idle' | 'drawing' | 'complete'>('idle');
+  const mapClickHandlerRef = useRef<((e: MapMouseEvent) => void) | null>(null);
+  const trackVerticesHandlerRef = useRef<(() => void) | null>(null);
   useEffect(() => { waterwayGraphRef.current = waterwayGraph; }, [waterwayGraph]);
   useEffect(() => { aoiStatusRef.current = aoiStatus; }, [aoiStatus]);
 
@@ -88,22 +98,29 @@ export default function App() {
     aoiDraw.on('change', (polygon) => { if (polygon) setAoiStatus('complete'); });
     aoiDraw.on('stop', () => { setAoiStatus((prev) => (prev === 'drawing' ? 'complete' : prev)); });
 
-    m.on('click', (e) => {
+    mapClickHandlerRef.current = (e) => {
       if (aoiStatusRef.current === 'drawing') return;
       const graph = waterwayGraphRef.current;
       if (!graph || Object.keys(graph.nodeMap).length === 0) return;
       const nearestId = findNearestNode(graph.nodeMap, e.lngLat.lng, e.lngLat.lat);
       if (nearestId) { setSelectedFloodSource(nearestId); setFloodSourceLayer(m, graph.nodeMap[nearestId]!); }
-    });
+    };
+
+    m.on('click', mapClickHandlerRef.current);
   }, []);
 
   const handleStartDrawing = useCallback(() => {
     if (aoiRef.current) {
+      if (trackVerticesHandlerRef.current) {
+        aoiRef.current.off('change', trackVerticesHandlerRef.current);
+      }
+
       aoiRef.current.start(); setAoiStatus('drawing'); setAoiVertices(0);
       const trackVertices = () => {
         const poly = aoiRef.current?.getPolygon();
         if (poly?.geometry.coordinates[0]) setAoiVertices(Math.max(0, poly.geometry.coordinates[0].length - 1));
       };
+      trackVerticesHandlerRef.current = trackVertices;
       aoiRef.current.on('change', trackVertices);
     }
   }, []);
@@ -115,16 +132,100 @@ export default function App() {
     setSelectedFloodSource(null); setActiveLegend(null);
   }, [map]);
 
-  const sharedProps = {
+  useEffect(() => {
+    return () => {
+      const currentMap = map;
+      if (currentMap && mapClickHandlerRef.current) {
+        currentMap.off('click', mapClickHandlerRef.current);
+      }
+
+      if (aoiRef.current && trackVerticesHandlerRef.current) {
+        aoiRef.current.off('change', trackVerticesHandlerRef.current);
+      }
+    };
+  }, [map]);
+
+  const handleWaterwaysResult = useCallback((_waterways: number, _components: number, graphData: WaterwayGraphData) => {
+    setWaterwayGraph(graphData);
+  }, []);
+
+  const handleOfflinePackNotice = useCallback((message: string) => {
+    setOfflinePackNotice(message);
+  }, []);
+
+  useEffect(() => {
+    if (!map) return;
+    if (!ENABLE_OFFLINE_PACK_DOWNLOADS) {
+      setOfflinePackNotice(null);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      const selectedPackId = localStorage.getItem(OFFLINE_PACK_SELECTED_KEY);
+      if (!selectedPackId) return;
+
+      try {
+        const packs = await loadOfflinePackIndex();
+        const selectedPack = packs.find((pack) => pack.id === selectedPackId);
+        if (!selectedPack) {
+          if (!cancelled) {
+            setOfflinePackNotice('Saved offline pack is no longer present in the pack index.');
+          }
+          return;
+        }
+
+        const readiness = await checkPackReadiness(selectedPack);
+        if (!readiness.ready) {
+          if (!cancelled) {
+            setOfflinePackNotice(
+              `Saved offline pack "${selectedPack.name}" is degraded. Missing ${readiness.missingUrls.length} required assets. Open Offline Packs and run Repair Download.`,
+            );
+          }
+          return;
+        }
+
+        await applyOfflinePack(map, selectedPack);
+        if (!cancelled) {
+          setOfflinePackNotice(`Applied saved offline pack: ${selectedPack.name}`);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setOfflinePackNotice(
+            `Saved offline pack could not be applied: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [map]);
+
+  const sharedProps = useMemo(() => ({
     map, pyodideStatus, pyodideProgress, pyodideMessage,
     aoiStatus, aoiVertices, computeResult, waterwayGraph, selectedFloodSource,
     onStartDrawing: handleStartDrawing, onClearAoi: handleClearAoi,
     onComputeResult: setComputeResult,
-    onWaterwaysResult: (_waterways: number, _components: number, graphData: WaterwayGraphData) => {
-      setWaterwayGraph(graphData);
-    },
+    onWaterwaysResult: handleWaterwaysResult,
     onLegendChange: setActiveLegend,
-  };
+    onOfflinePackNotice: handleOfflinePackNotice,
+  }), [
+    map,
+    pyodideStatus,
+    pyodideProgress,
+    pyodideMessage,
+    aoiStatus,
+    aoiVertices,
+    computeResult,
+    waterwayGraph,
+    selectedFloodSource,
+    handleStartDrawing,
+    handleClearAoi,
+    handleWaterwaysResult,
+    handleOfflinePackNotice,
+  ]);
 
   return (
     <div className="flex h-screen w-full flex-col bg-background">
@@ -135,6 +236,11 @@ export default function App() {
         }}
         sidebarOpen={sidebarOpen}
       />
+      {offlinePackNotice && (
+        <div className="border-b border-border bg-warning/10 px-4 py-2 text-sm text-warning">
+          {offlinePackNotice}
+        </div>
+      )}
       <div className="flex flex-1 overflow-hidden">
         {!isMobile && sidebarOpen && <Sidebar {...sharedProps} />}
         <MapView aoiStatus={aoiStatus} aoiVertices={aoiVertices} onMapReady={handleMapReady} activeLegend={activeLegend} />

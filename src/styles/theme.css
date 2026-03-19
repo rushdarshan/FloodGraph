@@ -34,6 +34,28 @@
   --sidebar-accent-foreground: #e6edf3;
   --sidebar-border: #30363d;
   --sidebar-ring: #1f6feb;
+  
+  /* Color-blind-safe palette for network connectivity (Viridis-inspired) */
+  --connectivity-1: #440154;
+  --connectivity-2: #31688e;
+  --connectivity-3: #35b779;
+  --connectivity-4: #fde724;
+  --connectivity-5: #ff7f00;
+  --connectivity-6: #d62728;
+  
+  /* Flood risk visualization (Viridis: low→high) */
+  --risk-low: #35b779;
+  --risk-medium: #fde724;
+  --risk-high: #ff7f00;
+  --risk-critical: #d62728;
+  
+  /* Status colors with proper contrast */
+  --success: #28a745;
+  --success-foreground: #ffffff;
+  --warning: #ffc107;
+  --warning-foreground: #000000;
+  --info: #1f6feb;
+  --info-foreground: #ffffff;
 }
 
 @theme inline {
@@ -68,6 +90,22 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-connectivity-1: var(--connectivity-1);
+  --color-connectivity-2: var(--connectivity-2);
+  --color-connectivity-3: var(--connectivity-3);
+  --color-connectivity-4: var(--connectivity-4);
+  --color-connectivity-5: var(--connectivity-5);
+  --color-connectivity-6: var(--connectivity-6);
+  --color-risk-low: var(--risk-low);
+  --color-risk-medium: var(--risk-medium);
+  --color-risk-high: var(--risk-high);
+  --color-risk-critical: var(--risk-critical);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
 }
 
 @layer base {
@@ -81,5 +119,16 @@
 
   html {
     font-size: var(--font-size);
+  }
+
+  /* Accessibility: Respect prefers-reduced-motion */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }

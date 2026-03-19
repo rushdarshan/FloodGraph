@@ -1,29 +1,5 @@
 {
   "version": "1",
-  "_comment": "NeerNet offline pack index. Pack downloads require an internet connection on first use.",
-  "packs": [
-    {
-      "id": "kerala-india",
-      "name": "Kerala, India",
-      "description": "Basemap style for Kerala. Uses the live OpenFreeMap liberty style (requires internet for first cache). For a real offline PMTiles extract, host a kerala.pmtiles file and update pmtiles_url.",
-      "pmtiles_url": "https://tiles.openfreemap.org/planet",
-      "style_url": "https://tiles.openfreemap.org/styles/liberty",
-      "sprite_urls": [],
-      "glyph_url_prefix": "",
-      "size_mb_approx": 0,
-      "bbox": [74.85, 8.18, 77.64, 12.78],
-      "_note": "pmtiles_url points to the global planet file (~80 GB). For production, host a Kerala region extract and update this URL."
-    },
-    {
-      "id": "sample-local",
-      "name": "Sample – Local file (dev)",
-      "description": "Serves a local PMTiles file from public/sample.pmtiles. Copy any .pmtiles file there and update the URL.",
-      "pmtiles_url": "/sample.pmtiles",
-      "style_url": "/sample-style.json",
-      "sprite_urls": [],
-      "glyph_url_prefix": "",
-      "size_mb_approx": 0,
-      "bbox": [-180, -90, 180, 90]
-    }
-  ]
+  "_comment": "Offline pack downloads are disabled in demo mode until a real PMTiles/style/glyph dataset is hosted.",
+  "packs": []
 }

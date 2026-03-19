@@ -17,7 +17,7 @@ export function ResultsSection({ nodesCount, edgesCount, componentsCount }: Resu
             <BarChart3 className="h-4 w-4" />
             Analysis Summary
           </CardTitle>
-          <CardDescription className="text-xs">Results from the last computation</CardDescription>
+          <CardDescription className="text-xs">Summary from your most recent analysis</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
@@ -31,7 +31,7 @@ export function ResultsSection({ nodesCount, edgesCount, componentsCount }: Resu
             <div className="flex items-center justify-between p-2 rounded-md bg-muted/50">
               <div className="flex items-center gap-2 text-sm">
                 <GitBranch className="h-4 w-4 text-muted-foreground" />
-                <span>Connections mapped</span>
+                <span>Waterway connections</span>
               </div>
               <Badge variant="secondary">{edgesCount.toLocaleString()}</Badge>
             </div>

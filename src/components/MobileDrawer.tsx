@@ -5,11 +5,13 @@ import { AOISection } from './sidebar/AOISection';
 import { WaterwaysSection } from './sidebar/WaterwaysSection';
 import { ComputeSection } from './sidebar/ComputeSection';
 import { OfflinePackSection } from './sidebar/OfflinePackSection';
+import { OfflineDemoModeSection } from './sidebar/OfflineDemoModeSection';
 import { PyodideStatus } from './sidebar/PyodideStatus';
 import { ResultsSection } from './sidebar/ResultsSection';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from './ui/drawer';
 import { ScrollArea } from './ui/scroll-area';
 import { Separator } from './ui/separator';
+import { ENABLE_OFFLINE_PACK_DOWNLOADS } from '../offlinePacks.js';
 
 interface MobileDrawerProps {
   open: boolean;
@@ -28,12 +30,13 @@ interface MobileDrawerProps {
   onComputeResult: (data: { nodesCount: number; edgesCount: number; componentsCount: number }) => void;
   onWaterwaysResult: (waterways: number, components: number, graphData: WaterwayGraphData) => void;
   onLegendChange: (type: LegendType) => void;
+  onOfflinePackNotice?: (message: string) => void;
 }
 
 export function MobileDrawer({
   open, onOpenChange, map, pyodideStatus, pyodideProgress, pyodideMessage,
   aoiStatus, aoiVertices, computeResult, waterwayGraph, selectedFloodSource,
-  onStartDrawing, onClearAoi, onComputeResult, onWaterwaysResult, onLegendChange,
+  onStartDrawing, onClearAoi, onComputeResult, onWaterwaysResult, onLegendChange, onOfflinePackNotice,
 }: MobileDrawerProps) {
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
@@ -64,7 +67,9 @@ export function MobileDrawer({
                 <Separator />
               </>
             )}
-            <OfflinePackSection />
+            {ENABLE_OFFLINE_PACK_DOWNLOADS
+              ? <OfflinePackSection map={map} onNotice={onOfflinePackNotice} />
+              : <OfflineDemoModeSection />}
           </div>
         </ScrollArea>
       </DrawerContent>

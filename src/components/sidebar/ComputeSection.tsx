@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import type { Map as MLMap } from 'maplibre-gl';
 import { Activity, Play, Loader2, AlertCircle, Download, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
@@ -39,6 +39,7 @@ export function ComputeSection({
   const [statusMsg, setStatusMsg] = useState('');
   const [watershedStats, setWatershedStats] = useState<WatershedStatsResult | null>(null);
   const [lastResultGeoJSON, setLastResultGeoJSON] = useState<GeoJSON.FeatureCollection | null>(null);
+  const numberFormatter = useMemo(() => new Intl.NumberFormat(), []);
 
   const animIntervalRef = useRef<number | null>(null);
 
@@ -49,6 +50,55 @@ export function ComputeSection({
   const hasWaterways = waterwayGraph !== null;
   const canRun       = pyodideReady && map !== null && hasWaterways;
   const isRunning    = status === 'running';
+
+  function formatCount(value: number): string {
+    return numberFormatter.format(value);
+  }
+
+  const formattedWatershedStats = useMemo(() => {
+    if (!watershedStats) return [] as [string, string][];
+
+    return [
+      ['Waterway sections', formatCount(watershedStats.node_count)],
+      ['Connections', formatCount(watershedStats.edge_count)],
+      ['Separate networks', formatCount(watershedStats.component_count)],
+      ['Largest network', formatCount(watershedStats.largest_component)],
+      ['River outlets', formatCount(watershedStats.outlet_count)],
+      ['Headwater sources', formatCount(watershedStats.headwater_count)],
+      ['Confluences', formatCount(watershedStats.confluence_count)],
+      ['Avg connections/node', String(watershedStats.avg_degree)],
+      ['Network density', String(watershedStats.density)],
+    ];
+  }, [watershedStats, numberFormatter]);
+
+  function getUserFacingError(err: unknown): string {
+    if (err instanceof Error && err.message.trim()) {
+      const rawMessage = err.message.trim();
+      const lowerMessage = rawMessage.toLowerCase();
+
+      if (lowerMessage.includes('network') || lowerMessage.includes('fetch')) {
+        return 'Could not reach the analysis engine. Check your connection and try again.';
+      }
+
+      if (lowerMessage.includes('timeout')) {
+        return 'The analysis took too long to complete. Try again, or run a smaller area first.';
+      }
+
+      return `Analysis failed: ${rawMessage}`;
+    }
+    return 'Analysis failed. Try again. If it keeps failing, reload waterway data first.';
+  }
+
+  function resolveSourceNodes(fallbackCount: number): string[] {
+    if (!waterwayGraph) return [];
+    const allNodeIds = Object.keys(waterwayGraph.nodeMap);
+    if (allNodeIds.length === 0) return [];
+
+    if (selectedFloodSource && waterwayGraph.nodeMap[selectedFloodSource]) {
+      return [selectedFloodSource];
+    }
+    return allNodeIds.slice(0, fallbackCount);
+  }
 
   function stopAnimation() {
     if (animIntervalRef.current !== null) {
@@ -62,9 +112,12 @@ export function ComputeSection({
   const handleFloodBFS = async () => {
     if (!canRun) return;
     stopAnimation();
-    const sourceNodes = selectedFloodSource
-      ? [selectedFloodSource]
-      : Object.keys(waterwayGraph.nodeMap).slice(0, 3);
+    const sourceNodes = resolveSourceNodes(3);
+    if (sourceNodes.length === 0) {
+      setStatus('error');
+      setStatusMsg('No waterways are available to simulate. Reload waterway data and try again.');
+      return;
+    }
 
     setStatus('running');
     setStatusMsg('Simulating flood spread from the selected point…');
@@ -88,12 +141,12 @@ export function ComputeSection({
 
       setStatusMsg(
         result.flooded_nodes.length > 0
-          ? `Flood would reach ${result.flooded_nodes.length.toLocaleString()} waterway sections in ${result.steps_taken} step(s)`
-          : 'No waterways reachable from selected point — try tapping a different location on the map'
+          ? `Flood would reach ${formatCount(result.flooded_nodes.length)} waterway sections in ${formatCount(result.steps_taken)} step(s)`
+          : 'No waterways are reachable from this source point. Tap another map location and retry.'
       );
       setStatus('complete');
     } catch (err) {
-      setStatusMsg(err instanceof Error ? err.message : String(err));
+      setStatusMsg(getUserFacingError(err));
       setStatus('error');
     }
   };
@@ -101,12 +154,15 @@ export function ComputeSection({
   const handleAnimatedFlood = async () => {
     if (!canRun) return;
     stopAnimation();
-    const sourceNodes = selectedFloodSource
-      ? [selectedFloodSource]
-      : Object.keys(waterwayGraph.nodeMap).slice(0, 3);
+    const sourceNodes = resolveSourceNodes(3);
+    if (sourceNodes.length === 0) {
+      setStatus('error');
+      setStatusMsg('No waterways are available to animate. Reload waterway data and try again.');
+      return;
+    }
 
     setStatus('running');
-    setStatusMsg('Computing flood spread animation via Pyodide…');
+    setStatusMsg('Preparing flood spread animation…');
     setWatershedStats(null); setLastResultGeoJSON(null);
     clearOverlayLayers(map!);
 
@@ -115,7 +171,7 @@ export function ComputeSection({
       const frames  = result.frames;
       let step = 0;
       setStatus('complete');
-      setStatusMsg(`Animating step 1 of ${frames.length}…`);
+      setStatusMsg(`Running animation step 1 of ${frames.length}…`);
       onLegendChange('animated');
 
       animIntervalRef.current = window.setInterval(() => {
@@ -130,18 +186,18 @@ export function ComputeSection({
             })),
           };
           setLastResultGeoJSON(ptGeoJSON);
-          setStatusMsg(`Flood reached ${lastFrame.length.toLocaleString()} sections in ${frames.length - 1} step(s)`);
+          setStatusMsg(`Flood reached ${formatCount(lastFrame.length)} sections in ${formatCount(frames.length - 1)} step(s)`);
           return;
         }
         const allFlooded = frames[step];
         const prevSet    = step > 0 ? new Set(frames[step - 1]) : new Set<string>();
         const frontier   = allFlooded.filter((id) => !prevSet.has(id));
         setAnimatedFloodLayer(map!, waterwayGraph.nodeMap, allFlooded, frontier);
-        setStatusMsg(`Step ${step + 1} of ${frames.length} — ${allFlooded.length.toLocaleString()} sections flooded`);
+        setStatusMsg(`Step ${formatCount(step + 1)} of ${formatCount(frames.length)} — ${formatCount(allFlooded.length)} sections flooded`);
         step++;
       }, 600);
     } catch (err) {
-      setStatusMsg(err instanceof Error ? err.message : String(err));
+      setStatusMsg(getUserFacingError(err));
       setStatus('error');
     }
   };
@@ -152,7 +208,12 @@ export function ComputeSection({
     if (!canRun) return;
     stopAnimation();
     const nodeIds = Object.keys(waterwayGraph.nodeMap);
-    const sourceNodes = selectedFloodSource ? [selectedFloodSource] : nodeIds.slice(0, 5);
+    const sourceNodes = resolveSourceNodes(5);
+    if (nodeIds.length === 0 || sourceNodes.length === 0) {
+      setStatus('error');
+      setStatusMsg('No waterways are available to score. Reload waterway data and try again.');
+      return;
+    }
 
     setStatus('running');
     setStatusMsg('Calculating flood risk for every waterway section…');
@@ -168,12 +229,12 @@ export function ComputeSection({
 
       const highRisk = Object.values(result.scores).filter((s) => s > result.max_score * 0.75).length;
       setStatusMsg(
-        `${highRisk.toLocaleString()} high-risk sections out of ${nodeIds.length.toLocaleString()} total — red waterways are most vulnerable`
+        `${formatCount(highRisk)} high-risk sections out of ${formatCount(nodeIds.length)} total — sections marked critical are most vulnerable`
       );
       setStatus('complete');
       onResult({ nodesCount: nodeIds.length, edgesCount: waterwayGraph.edges.length, componentsCount: 0 });
     } catch (err) {
-      setStatusMsg(err instanceof Error ? err.message : String(err));
+      setStatusMsg(getUserFacingError(err));
       setStatus('error');
     }
   };
@@ -206,12 +267,12 @@ export function ComputeSection({
       setStatusMsg(
         result.ap_count === 0 && result.bridge_count === 0
           ? 'No critical infrastructure found — the waterway network is well connected'
-          : `Found ${result.ap_count.toLocaleString()} vulnerable junction${result.ap_count !== 1 ? 's' : ''} and ${result.bridge_count.toLocaleString()} critical channel${result.bridge_count !== 1 ? 's' : ''} — highlighted orange on the map`
+          : `Found ${formatCount(result.ap_count)} vulnerable junction${result.ap_count !== 1 ? 's' : ''} and ${formatCount(result.bridge_count)} critical channel${result.bridge_count !== 1 ? 's' : ''} — highlighted on the map as critical`
       );
       setStatus('complete');
       onResult({ nodesCount: Object.keys(waterwayGraph.nodeMap).length, edgesCount: waterwayGraph.edges.length, componentsCount: result.ap_count });
     } catch (err) {
-      setStatusMsg(err instanceof Error ? err.message : String(err));
+      setStatusMsg(getUserFacingError(err));
       setStatus('error');
     }
   };
@@ -236,12 +297,12 @@ export function ComputeSection({
       const nodeCount = Object.keys(waterwayGraph.nodeMap).length;
       const topSize   = result.component_sizes[0] ?? 0;
       setStatusMsg(
-        `Found ${result.num_components} connected waterway network${result.num_components !== 1 ? 's' : ''} — largest has ${topSize.toLocaleString()} sections`
+        `Found ${formatCount(result.num_components)} connected waterway network${result.num_components !== 1 ? 's' : ''} — largest has ${formatCount(topSize)} sections`
       );
       setStatus('complete');
       onResult({ nodesCount: nodeCount, edgesCount: waterwayGraph.edges.length, componentsCount: result.num_components });
     } catch (err) {
-      setStatusMsg(err instanceof Error ? err.message : String(err));
+      setStatusMsg(getUserFacingError(err));
       setStatus('error');
     }
   };
@@ -256,10 +317,10 @@ export function ComputeSection({
     try {
       const result = await getPyWorker().watershedStats(waterwayGraph.edges);
       setWatershedStats(result);
-      setStatusMsg(`Watershed has ${result.outlet_count} outlet${result.outlet_count !== 1 ? 's' : ''} and ${result.headwater_count} headwater source${result.headwater_count !== 1 ? 's' : ''}`);
+      setStatusMsg(`Watershed has ${formatCount(result.outlet_count)} outlet${result.outlet_count !== 1 ? 's' : ''} and ${formatCount(result.headwater_count)} headwater source${result.headwater_count !== 1 ? 's' : ''}`);
       setStatus('complete');
     } catch (err) {
-      setStatusMsg(err instanceof Error ? err.message : String(err));
+      setStatusMsg(getUserFacingError(err));
       setStatus('error');
     }
   };
@@ -280,18 +341,19 @@ export function ComputeSection({
 
   function ActionBtn({ onClick, label, desc, color }: { onClick: () => void; label: string; desc: string; color?: string }) {
     return (
-      <div>
+      <div className="min-w-0">
         <Button
           onClick={onClick}
           variant="outline"
-          className="w-full justify-start"
+          className="w-full min-w-0 justify-start"
           disabled={!canRun || isRunning}
           aria-label={label}
+          title={label}
         >
           <Play className={`h-4 w-4 mr-2 flex-shrink-0 ${color ?? 'text-muted-foreground'}`} />
-          <span className="font-medium">{label}</span>
+          <span className="font-medium truncate">{label}</span>
         </Button>
-        <p className="text-[10px] text-muted-foreground mt-0.5 pl-[38px] leading-relaxed">{desc}</p>
+        <p className="text-xs text-muted-foreground mt-0.5 pl-[38px] leading-relaxed break-words">{desc}</p>
       </div>
     );
   }
@@ -317,7 +379,7 @@ export function ComputeSection({
           {!canRun && (
             <div className="bg-muted rounded-md p-3 flex items-start gap-2 text-muted-foreground">
               <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-              <p className="text-xs">
+              <p className="text-xs break-words">
                 {!hasWaterways
                   ? 'Load waterway data first using the button above'
                   : 'Analysis engine is still loading — please wait a moment'}
@@ -326,9 +388,9 @@ export function ComputeSection({
           )}
 
           {isRunning && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-start gap-2 min-w-0" aria-live="polite">
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-              <span className="text-muted-foreground text-xs">{statusMsg}</span>
+              <span className="text-muted-foreground text-xs break-words">{statusMsg}</span>
             </div>
           )}
 
@@ -341,20 +403,20 @@ export function ComputeSection({
               onClick={handleFloodBFS}
               label="Simulate Flood Spread"
               desc="See which waterway sections would flood from your selected starting point"
-              color="text-blue-400"
+              color="text-info"
             />
             <ActionBtn
               onClick={handleAnimatedFlood}
               label="Animate Flood Spread"
               desc="Watch the flood advance step by step with live animation"
-              color="text-blue-400"
+              color="text-info"
             />
             {hasWaterways && (
-              <div className="flex items-start gap-1.5 text-[10px] text-muted-foreground pl-1">
-                <MapPin className={`h-3 w-3 mt-0.5 flex-shrink-0 ${selectedFloodSource ? 'text-orange-400' : ''}`} />
+              <div className="flex items-start gap-1.5 text-[10px] text-muted-foreground pl-1 min-w-0">
+                <MapPin className={`h-3 w-3 mt-0.5 flex-shrink-0 ${selectedFloodSource ? 'text-risk-high' : ''}`} />
                 {selectedFloodSource
-                  ? <span className="text-orange-400">Flood source set — tap map to change</span>
-                  : <span>Tap any point on the map to set the flood starting location</span>
+                  ? <span className="text-risk-high break-words">Flood source set. Tap the map to change it.</span>
+                  : <span className="break-words">Tap the map to choose a flood source.</span>
                 }
               </div>
             )}
@@ -368,14 +430,14 @@ export function ComputeSection({
             <ActionBtn
               onClick={handleRiskScore}
               label="Map Flood Risk"
-              desc="Colour waterways by flood vulnerability — red = high risk, green = safe"
-              color="text-red-400"
+              desc="Label waterways by flood vulnerability from low to critical risk"
+              color="text-risk-critical"
             />
             <ActionBtn
               onClick={handleCriticalPath}
               label="Find Vulnerable Infrastructure"
-              desc="Highlight junctions and channels whose blockage would disconnect water flow"
-              color="text-orange-400"
+              desc="Highlight junctions and channels that could disrupt water flow if blocked"
+              color="text-risk-high"
             />
           </div>
 
@@ -387,45 +449,35 @@ export function ComputeSection({
             <ActionBtn
               onClick={handleConnectivity}
               label="Show Connected Networks"
-              desc="Colour each distinct drainage network — waterways sharing a colour are connected"
-              color="text-green-400"
+              desc="Color each distinct drainage network. Matching colors mean connected waterways."
+              color="text-connectivity-3"
             />
             <ActionBtn
               onClick={handleWatershedStats}
               label="Watershed Summary"
-              desc="Statistics about outlets, stream confluences, and drainage structure"
-              color="text-green-400"
+              desc="Show watershed structure, including outlets, headwaters, and confluences"
+              color="text-connectivity-3"
             />
           </div>
 
           {/* ── Status / Results ─────────────────────────────────────────── */}
           {status === 'complete' && !isRunning && (
-            <p className="text-xs text-green-400">{statusMsg}</p>
+            <p className="text-xs text-success break-words" aria-live="polite">{statusMsg}</p>
           )}
           {status === 'error' && (
-            <div className="bg-destructive/10 text-destructive rounded-md p-3 text-xs">{statusMsg}</div>
+            <div className="bg-destructive/10 text-destructive rounded-md p-3 text-xs break-words" role="alert">{statusMsg}</div>
           )}
 
           {/* Watershed stats table */}
           {watershedStats && status === 'complete' && (
             <div className="rounded-md border border-border p-3 space-y-1.5 text-xs">
-              <p className="font-semibold text-muted-foreground uppercase tracking-wide text-[10px]">Watershed Statistics</p>
+              <p className="font-semibold text-muted-foreground uppercase tracking-wide text-[10px]">Watershed Summary</p>
               <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-                {([
-                  ['Waterway sections', watershedStats.node_count.toLocaleString()],
-                  ['Connections', watershedStats.edge_count.toLocaleString()],
-                  ['Separate networks', String(watershedStats.component_count)],
-                  ['Largest network', watershedStats.largest_component.toLocaleString()],
-                  ['River outlets', watershedStats.outlet_count.toLocaleString()],
-                  ['Headwater sources', watershedStats.headwater_count.toLocaleString()],
-                  ['Confluences', watershedStats.confluence_count.toLocaleString()],
-                  ['Avg connections/node', String(watershedStats.avg_degree)],
-                  ['Network density', String(watershedStats.density)],
-                ] as [string, string][]).map(([label, val]) => (
-                  <>
-                    <span key={label + '-l'} className="text-muted-foreground">{label}</span>
-                    <span key={label + '-v'} className="text-right font-mono">{val}</span>
-                  </>
+                {formattedWatershedStats.map(([label, val]) => (
+                  <div key={label} className="contents">
+                    <span key={label + '-l'} className="text-muted-foreground break-words">{label}</span>
+                    <span key={label + '-v'} className="text-right font-mono break-all">{val}</span>
+                  </div>
                 ))}
               </div>
             </div>

@@ -59,13 +59,17 @@ export function WaterwaysSection({ map, onResult }: WaterwaysSectionProps) {
       onResult(data.nodes.length, result.num_components, { edges, nodeMap, geojson: data.geojson, coloredGeojson: coloredGeoJSON, components: result.components });
       const topSize = result.component_sizes[0] ?? 0;
       setStatusMsg(
-        data.nodes.length.toLocaleString() + ' waterway sections across ' +
+        'Loaded ' + data.nodes.length.toLocaleString() + ' waterway sections in ' +
         result.num_components + ' connected network' + (result.num_components !== 1 ? 's' : '') +
-        ' — largest has ' + topSize.toLocaleString() + ' sections'
+        '. Largest network: ' + topSize.toLocaleString() + ' sections.'
       );
       setStatus('done');
     } catch (err) {
-      setStatusMsg(err instanceof Error ? err.message : String(err));
+      if (err instanceof Error && err.message.trim()) {
+        setStatusMsg(`Could not load waterway data: ${err.message.trim()}`);
+      } else {
+        setStatusMsg('Could not load waterway data. Check your connection and try again.');
+      }
       setStatus('error');
     } finally {
       worker.offStatus(pyStatus);
@@ -78,17 +82,17 @@ export function WaterwaysSection({ map, onResult }: WaterwaysSectionProps) {
         <CardHeader className="pb-3">
           <CardTitle id="waterways-title" className="text-sm flex items-center gap-2">
             <Waves className="h-4 w-4" />
-            Waterway Map
+            Waterway Data
           </CardTitle>
           <CardDescription className="text-xs">
-            Load real waterway data for Kerala from OpenStreetMap
+            Load Kerala waterway data from OpenStreetMap
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           {status === 'idle' && (
             <Button onClick={handleFetch} className="w-full" disabled={!map} aria-label="Load Kerala waterway data">
               <Download className="h-4 w-4 mr-2" />
-              Load Kerala Waterways
+              Load Waterway Data
             </Button>
           )}
           {status === 'loading' && (
@@ -108,14 +112,14 @@ export function WaterwaysSection({ map, onResult }: WaterwaysSectionProps) {
               <div className="bg-green-500/10 text-green-400 rounded-md p-3 text-sm flex items-start gap-2">
                 <CheckCircle2 className="h-4 w-4 mt-0.5 flex-shrink-0" />
                 <div className="flex-1">
-                  <p className="font-medium">Waterways Loaded</p>
+                  <p className="font-medium">Waterway data loaded</p>
                   <div className="flex items-center gap-2 mt-2 flex-wrap">
                     <Badge variant="secondary" className="text-xs">{waterwaysCount.toLocaleString()} sections</Badge>
                     <Badge variant="secondary" className="text-xs">{componentsCount} network{componentsCount !== 1 ? 's' : ''}</Badge>
                   </div>
                 </div>
               </div>
-              <Button onClick={handleFetch} variant="outline" className="w-full" size="sm">Refresh Data</Button>
+              <Button onClick={handleFetch} variant="outline" className="w-full" size="sm">Reload Waterway Data</Button>
             </div>
           )}
         </CardContent>
